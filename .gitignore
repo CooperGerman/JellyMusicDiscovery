@@ -1,0 +1,9 @@
+# .NET build output
+**/bin/
+**/obj/
+
+# Locally generated plugin package output
+/plugin/artifacts/
+
+# Local Jellyfin plugin staging copy
+/plugin/plugin/
