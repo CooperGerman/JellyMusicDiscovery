@@ -1,4 +1,5 @@
 using JellyMusicDiscovery.Filters;
+using JellyMusicDiscovery.Frontend;
 using JellyMusicDiscovery.Services;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Library;
@@ -36,6 +37,7 @@ public class ServiceRegistrator : IPluginServiceRegistrator
         services.AddSingleton<StreamSessionRegistry>();
         services.AddSingleton<DiscoveryItemCache>();
         services.AddSingleton<IMediaSourceProvider, DiscoveryMediaSourceProvider>();
+        services.AddHostedService<WebClientTransformationRegistration>();
 
         services.Configure<MvcOptions>(opts =>
         {

@@ -55,7 +55,20 @@ public class DiscoveryController : ControllerBase
     {
         if (!Guid.TryParse(itemId, out var id)) return BadRequest("invalid id");
 
-        // 1. Try the live library first (real items or stubs we previously persisted).
+        // Discovery track requests use Lidarr's album-sized request model.
+        if (_cache.TryGet(id, out var entry) && entry is not null)
+        {
+            if (entry.Kind == "album" || entry.Kind == "track")
+            {
+                if (string.IsNullOrWhiteSpace(entry.Artist) || string.IsNullOrWhiteSpace(entry.AlbumName))
+                    return BadRequest(new { Message = "This result has no album metadata to request." });
+
+                var result = await _lidarr.AddAlbumByTextAsync(entry.Artist, entry.AlbumName, ct).ConfigureAwait(false);
+                return result.Success ? Ok(new { result.Message }) : StatusCode(502, new { result.Message });
+            }
+        }
+
+        // Try the live library for real albums.
         var item = _library.GetItemById(id);
         if (item is not null)
         {
@@ -75,14 +88,19 @@ public class DiscoveryController : ControllerBase
             return res.Success ? Ok(new { res.Message }) : StatusCode(502, new { res.Message });
         }
 
-        // 2. Fall back to the in-memory cache populated by MusicSearchActionFilter.
-        if (_cache.TryGet(id, out var entry) && entry is not null && entry.Kind == "album")
-        {
-            var res = await _lidarr.AddAlbumByTextAsync(entry.Artist ?? string.Empty, entry.AlbumName ?? string.Empty, ct).ConfigureAwait(false);
-            return res.Success ? Ok(new { res.Message }) : StatusCode(502, new { res.Message });
-        }
-
         return NotFound("Unknown item id (not in library or recent search cache).");
+    }
+
+    /// <summary>POST /mdiscover/request/artist/{itemId} adds and monitors the full artist discography in Lidarr.</summary>
+    [HttpPost("request/artist/{itemId}")]
+    public async Task<IActionResult> RequestArtist(string itemId, CancellationToken ct)
+    {
+        if (!Guid.TryParse(itemId, out var id)) return BadRequest("invalid id");
+        if (!_cache.TryGet(id, out var entry) || entry is not { Kind: "artist" } || string.IsNullOrWhiteSpace(entry.Artist))
+            return NotFound("Unknown discovery artist.");
+
+        var result = await _lidarr.AddArtistByNameAsync(entry.Artist, ct).ConfigureAwait(false);
+        return result.Success ? Ok(new { result.Message }) : StatusCode(502, new { result.Message });
     }
 
     /// <summary>GET /mdiscover/album/{itemId}/tracks — lazy-materialize track stubs for a Deezer album stub.</summary>

@@ -25,6 +25,101 @@ public class LidarrClient
         _log = log;
     }
 
+    public async Task<RequestResult> AddArtistByNameAsync(string artistName, CancellationToken ct)
+    {
+        var cfg = Plugin.Instance!.Configuration;
+        if (string.IsNullOrWhiteSpace(cfg.LidarrBaseUrl) || string.IsNullOrWhiteSpace(cfg.LidarrApiKey))
+            return RequestResult.Fail("Lidarr is not configured.");
+
+        using var http = MakeClient();
+        var lookup = await http.GetFromJsonAsync<List<JsonElement>>(
+            $"api/v1/artist/lookup?term={Uri.EscapeDataString(artistName)}", JsonOpts, ct).ConfigureAwait(false);
+        var normalizedName = NormalizeName(artistName);
+        var matches = lookup?.Where(item =>
+                item.TryGetProperty("artistName", out var name)
+                && string.Equals(NormalizeName(name.GetString() ?? string.Empty), normalizedName, StringComparison.Ordinal))
+            .ToList() ?? new();
+
+        if (matches.Count != 1)
+            return RequestResult.Fail(matches.Count == 0
+                ? $"No exact Lidarr artist match for: {artistName}"
+                : $"Lidarr returned multiple exact artist matches for: {artistName}");
+
+        var match = matches[0];
+        if (!match.TryGetProperty("foreignArtistId", out var foreignIdEl) || string.IsNullOrWhiteSpace(foreignIdEl.GetString()))
+            return RequestResult.Fail("Lidarr's artist result has no MusicBrainz ID.");
+        var foreignId = foreignIdEl.GetString()!;
+
+        if (match.TryGetProperty("id", out var localArtistId)
+            && localArtistId.ValueKind == JsonValueKind.Number
+            && localArtistId.GetInt32() > 0)
+        {
+            var localArtist = await http.GetFromJsonAsync<JsonElement>(
+                $"api/v1/artist/{localArtistId.GetInt32()}", JsonOpts, ct).ConfigureAwait(false);
+            return await MonitorExistingArtistAsync(http, localArtist, artistName, ct).ConfigureAwait(false);
+        }
+
+        var rootFolders = await http.GetFromJsonAsync<List<JsonElement>>("api/v1/rootfolder", JsonOpts, ct).ConfigureAwait(false);
+        var rootPath = rootFolders?.FirstOrDefault().TryGetProperty("path", out var path) == true ? path.GetString() : null;
+        if (string.IsNullOrWhiteSpace(rootPath)) return RequestResult.Fail("Lidarr has no root folder configured.");
+
+        var qualityProfiles = await http.GetFromJsonAsync<List<JsonElement>>("api/v1/qualityprofile", JsonOpts, ct).ConfigureAwait(false);
+        var qualityProfileId = qualityProfiles?.FirstOrDefault().TryGetProperty("id", out var qualityId) == true ? qualityId.GetInt32() : 0;
+        if (qualityProfileId == 0) return RequestResult.Fail("Lidarr has no quality profile configured.");
+
+        var metadataProfiles = await http.GetFromJsonAsync<List<JsonElement>>("api/v1/metadataprofile", JsonOpts, ct).ConfigureAwait(false);
+        var metadataProfileId = metadataProfiles?.FirstOrDefault().TryGetProperty("id", out var metadataId) == true ? metadataId.GetInt32() : 0;
+        if (metadataProfileId == 0) return RequestResult.Fail("Lidarr has no metadata profile configured.");
+
+        var artistPayload = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(match.GetRawText(), JsonOpts) ?? new();
+        artistPayload["rootFolderPath"] = AsJson(rootPath);
+        artistPayload["qualityProfileId"] = AsJson(qualityProfileId);
+        artistPayload["metadataProfileId"] = AsJson(metadataProfileId);
+        artistPayload["monitored"] = AsJson(true);
+        artistPayload["monitorNewItems"] = AsJson("all");
+        artistPayload["addOptions"] = AsJson(new { monitor = "all", searchForMissingAlbums = true });
+
+        using var response = await http.PostAsJsonAsync("api/v1/artist", artistPayload, JsonOpts, ct).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            _log.LogWarning("Lidarr artist add failed {Status} for {Artist}.", (int)response.StatusCode, artistName);
+            return RequestResult.Fail($"Lidarr returned {(int)response.StatusCode} while adding the artist.");
+        }
+
+        _log.LogInformation("Lidarr added full discography for {Artist}.", artistName);
+        return RequestResult.Ok("Artist added to Lidarr; the full discography is monitored and searched.");
+    }
+
+    private async Task<RequestResult> MonitorExistingArtistAsync(HttpClient http, JsonElement artist, string artistName, CancellationToken ct)
+    {
+        var artistId = artist.GetProperty("id").GetInt32();
+        var artistPayload = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(artist.GetRawText(), JsonOpts) ?? new();
+        artistPayload["monitored"] = AsJson(true);
+        artistPayload["monitorNewItems"] = AsJson("all");
+
+        using var update = await http.PutAsJsonAsync($"api/v1/artist/{artistId}", artistPayload, JsonOpts, ct).ConfigureAwait(false);
+        if (!update.IsSuccessStatusCode)
+            return RequestResult.Fail($"Lidarr could not enable monitoring for {artistName}.");
+
+        var albums = await http.GetFromJsonAsync<List<JsonElement>>(
+            $"api/v1/album?artistId={artistId}", JsonOpts, ct).ConfigureAwait(false) ?? new();
+        foreach (var album in albums.Where(album => !album.TryGetProperty("monitored", out var monitored) || monitored.ValueKind != JsonValueKind.True))
+        {
+            var albumId = album.GetProperty("id").GetInt32();
+            var albumPayload = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(album.GetRawText(), JsonOpts) ?? new();
+            albumPayload["monitored"] = AsJson(true);
+            using var albumUpdate = await http.PutAsJsonAsync($"api/v1/album/{albumId}", albumPayload, JsonOpts, ct).ConfigureAwait(false);
+            if (!albumUpdate.IsSuccessStatusCode)
+                return RequestResult.Fail($"Lidarr could not monitor all existing albums for {artistName}.");
+        }
+
+        using var search = await http.PostAsJsonAsync("api/v1/command", new { name = "ArtistSearch", artistId }, JsonOpts, ct).ConfigureAwait(false);
+        if (!search.IsSuccessStatusCode)
+            return RequestResult.Fail($"Lidarr enabled monitoring for {artistName}, but could not start an artist search.");
+
+        return RequestResult.Ok("Existing artist enabled in Lidarr; all albums are monitored and a search was started.");
+    }
+
     public Task<RequestResult> AddAlbumByMbidAsync(string releaseGroupMbid, CancellationToken ct) =>
         AddAlbumAsync(releaseGroupMbid, freeText: null, expectedArtist: null, expectedAlbum: null, ct);
 
