@@ -8,12 +8,12 @@
     "overview": "Adds a discovery layer to Jellyfin's music library, with optional Lidarr requests and streaming companions.",
     "versions": [
       {
-        "version": "0.1.1.0",
-        "changelog": "Fix playback reporting errors for synthetic music-video items.",
-        "targetAbi": "10.11.0.0",
+        "version": "0.1.2.0",
+        "changelog": "- Target Jellyfin 12.1 on .NET 10.\n- Intercept synthetic-video playback reports to prevent UserData foreign-key errors.\n- Inject request controls into index.html only; leave JavaScript chunks untouched.",
+        "targetAbi": "12.1.0.0",
         "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
-        "checksum": "da30f74015399c7280f754466f5b28af",
-        "timestamp": "2026-10-02T20:32:46Z"
+        "checksum": "864c634ec596fa7ebc25cba43722c3d2",
+        "timestamp": "2026-10-02T21:01:16Z"
       }
     ]
   }

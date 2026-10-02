@@ -181,11 +181,11 @@ radio plays right away; the Deezer hits will *display* but not play
 until you add Level 2.
 
 1. Download `plugin/JellyMusicDiscovery.zip` from this repo (or build
-   it yourself: `cd plugin/source && make package`).
+  it yourself by running `make package` from the repository root).
 2. Find Jellyfin's plugins folder for your install — see
    [`plugin/INSTALL.md`](plugin/INSTALL.md) for the path on every
    common platform.
-3. Make a folder named `MusicDiscovery_0.1.1.0` inside the plugins
+3. Make a folder named `MusicDiscovery_0.1.2.0` inside the plugins
    folder, unzip the bundle into it.
 4. Restart Jellyfin. The plugin appears under **Dashboard → Plugins
    → Music Discovery**.
@@ -226,13 +226,11 @@ gotchas (Lidarr `UMASK=000`, the Soularr version-check patch, etc.).
 ## Requirements & compatibility
 
 ### Jellyfin
-- **Server version: 10.11.x.** The plugin's `meta.json` declares
-  `targetAbi=10.11.0.0` and the source is built against the
-  `Jellyfin.Common/Controller/Model 10.11.2` packages. It will load on
-  any 10.11.x. **It will NOT load on 10.10 or earlier** — Jellyfin's
-  plugin ABI changed. If you need a 10.10 build, you'd have to
-  rebuild against the older NuGet packages and adjust the API
-  surface that changed.
+- **Server version: 12.1.x.** The plugin's `meta.json` declares
+  `targetAbi=12.1.0.0` and the source is built against the
+  `Jellyfin.Common/Controller/Model 12.1.0` packages. It will load on
+  Jellyfin 12.1.x; older server ABIs require a separate build. The source
+  targets .NET 10.0, as required by the Jellyfin 12.1 assemblies.
 - **No special Jellyfin server config needed.** No external auth, no
   reverse-proxy gymnastics.
 - **No extra Jellyfin plugins required.** Specifically: you do **not**
@@ -293,13 +291,17 @@ plugin talks to them over HTTP, so a multi-machine setup is fine.
 ## What's in this bundle
 
 ```
-JellyMusicDiscovery-v0.1.0/
+JellyMusicDiscovery-v0.1.2.0/
 ├── README.md                       ← you are here (architecture + full stack)
+├── Makefile                        ← root build/package entry point
+├── manifest.json                   ← Jellyfin plugin-catalog manifest
 ├── plugin/
 │   ├── JellyMusicDiscovery.zip     ← drop-in plugin (unzip into Jellyfin plugins dir)
 │   ├── meta.json                   ← plugin metadata (version, GUID, ABI target)
 │   ├── INSTALL.md                  ← step-by-step plugin install
-│   └── source/                     ← full C# source — `make package` rebuilds
+│   └── source/                     ← full C# source
+├── scripts/
+│   └── package_plugin.py           ← assembles ZIP and refreshes manifest checksum
 ├── slskd-organizer/                ← container that auto-sorts slskd downloads
 │                                     into {Artist}/{Album}/{NN - Title}.{ext}
 ├── ytmusic-stream-server/          ← FastAPI service that streams YouTube Music
@@ -467,18 +469,21 @@ sudo find /portainer/Music -type f -exec chmod 666 {} +
 
 ## Building from source
 
-The plugin requires .NET 9 SDK.
+The plugin requires the .NET 10 SDK. From the repository root, run:
 
 ```bash
-cd plugin/source
 make package
-# → ../artifacts/JellyMusicDiscovery.zip
+# builds Release, updates plugin/artifacts/JellyMusicDiscovery.zip,
+# refreshes plugin/JellyMusicDiscovery.zip, and updates manifest checksum/timestamp
 ```
 
 The `csproj` has a `StripUnneededDlls` target that deletes the
 Jellyfin/Microsoft/System DLLs Jellyfin already provides at runtime, so
 the zip stays small (~310 KB). `TagLibSharp.dll` *is* shipped because
-Jellyfin doesn't bundle it.
+Jellyfin doesn't bundle it. Before a new release, update the plugin version
+and add human-written bullet items to that version's `changelog` string in
+`manifest.json`; `make package` preserves the changelog while refreshing its
+checksum and timestamp.
 
 ## License / attribution
 

@@ -19,20 +19,20 @@ compose file's `volumes:` line that maps to `/config` inside the container.
 
 ## 2. Extract the zip
 
-Create a folder named `MusicDiscovery_0.1.1.0` (the trailing version must
+Create a folder named `MusicDiscovery_0.1.2.0` (the trailing version must
 match `meta.json`'s `version` field) inside the plugins folder, then unzip
 into it:
 
 ```bash
 PLUGINS=/path/to/jellyfin/plugins   # adjust per the table above
-mkdir -p "$PLUGINS/MusicDiscovery_0.1.1.0"
-unzip JellyMusicDiscovery.zip -d "$PLUGINS/MusicDiscovery_0.1.1.0"
+mkdir -p "$PLUGINS/MusicDiscovery_0.1.2.0"
+unzip JellyMusicDiscovery.zip -d "$PLUGINS/MusicDiscovery_0.1.2.0"
 ```
 
 After extraction the folder should contain:
 
 ```
-MusicDiscovery_0.1.1.0/
+MusicDiscovery_0.1.2.0/
 ├── JellyMusicDiscovery.dll
 ├── TagLibSharp.dll
 └── meta.json
@@ -74,16 +74,17 @@ companion services.
 
 ## Uninstall
 
-Remove the `MusicDiscovery_0.1.1.0` folder from the plugins directory and
+Remove the `MusicDiscovery_0.1.2.0` folder from the plugins directory and
 restart Jellyfin. No DB rows are left behind — the plugin stores its state
 inside Jellyfin's config db, which Jellyfin garbage-collects.
 
 ## Build it yourself
 
-The full source is in `plugin/source/`. Requires .NET 9 SDK:
+The full source is in `plugin/source/`. Requires the .NET 10 SDK. From the
+repository root, run:
 
 ```bash
-cd plugin/source
 make package
-# Produces ../artifacts/JellyMusicDiscovery.zip — same shape as this one.
+# Produces plugin/artifacts/JellyMusicDiscovery.zip and refreshes the
+# catalog ZIP and manifest checksum/timestamp.
 ```

@@ -26,7 +26,7 @@ public class DiscoveryManager
     private static readonly Guid StubNamespace = Guid.Parse("0e9a3c11-2b6a-4f5e-9a3a-77c2b8c9d111");
 
     private readonly ILibraryManager _library;
-    private readonly IItemRepository _items;
+    private readonly IItemPersistenceService _itemPersistence;
     private readonly MusicBrainzClient _mb;
     private readonly DeezerClient _deezer;
     private readonly CoverArtArchiveClient _caa;
@@ -36,14 +36,14 @@ public class DiscoveryManager
 
     public DiscoveryManager(
         ILibraryManager library,
-        IItemRepository items,
+        IItemPersistenceService itemPersistence,
         MusicBrainzClient mb,
         DeezerClient deezer,
         CoverArtArchiveClient caa,
         ILogger<DiscoveryManager> log)
     {
         _library = library;
-        _items = items;
+        _itemPersistence = itemPersistence;
         _mb = mb;
         _deezer = deezer;
         _caa = caa;
@@ -83,7 +83,7 @@ public class DiscoveryManager
                 _log.LogWarning(ex, "CreateItem failed for {Name}; falling back to SaveItems", item.Name);
             }
         }
-        _items.SaveItems(new[] { item }, ct);
+        _itemPersistence.SaveItems(new[] { item }, ct);
     }
 
     // -----------------------------------------------------------------

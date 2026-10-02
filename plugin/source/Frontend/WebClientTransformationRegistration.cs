@@ -104,8 +104,6 @@ public static class WebClientScriptTransformation
         var script = reader.ReadToEnd();
         var injected = $"<script {InjectionMarker}=\"true\">{script}</script>";
         var bodyEnd = contents.LastIndexOf("</body>", StringComparison.OrdinalIgnoreCase);
-        return bodyEnd < 0
-            ? contents + injected
-            : contents.Insert(bodyEnd, injected);
+        return bodyEnd < 0 ? contents : contents.Insert(bodyEnd, injected);
     }
 }
