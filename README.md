@@ -8,23 +8,23 @@
 # JellyMusicDiscovery
 
 A Jellyfin plugin that turns Jellyfin's music section into a discovery
-surface — find music you don't currently have in your library with lyrics included, 
+surface — find music you don't currently have in your library with lyrics included,
 play it instantly, watch music videos, listen to internet radio, and (optionally) download the track to your
 library when you 'favorite' the track or album.
 
-This has been tested and music-wise it works wonderfully with the client "Finer" 
+This has been tested and music-wise it works wonderfully with the client "Finer"
 and if you want to also watch the videos, the Jellyfin app itself does very well.
 
 This plugin works seamlessly and compliments [Gelato](https://github.com/lostb1t/Gelato) quite nicely!
 
 ##
 <div align="center">
-  
+
   <b>This took a whole lot of testing and debugging, but we made it! if you enjoyed the project, please feel free to buy me a coffee! </b>
-  
+
   </div>
 
-  
+
  <div align="center">
   <a href="https://buymeacoffee.com/drgit_stone" target="_blank">
     <img src=".github/BuyMeACoffee.png" alt="JellyMusicDiscovery" width="180"/>
@@ -72,7 +72,7 @@ player, full screen if you want.
 - The plugin registers a synthetic `MusicVideo` library item per
   result so it shows up in the artist's Videos tab natively.
 - **Needs:** same as feature 2 — `ytmusic-stream-server` + the URL set.
-- **Scope:** music videos only. Not general video, not movies/TV , 
+- **Scope:** music videos only. Not general video, not movies/TV ,
 (Gelato and Jellyfin already do that).
 
 ### 4. Discovery playlists — auto-generated, three sources
@@ -154,15 +154,25 @@ proper instead of a discovery hit.
 
 ## install — what to do
 
-**!!! Because there are so many pieces to this puzzle it is easy for some things not to click. 
+**!!! Because there are so many pieces to this puzzle it is easy for some things not to click.
 I really recommend you download Claude Code and have it do the installation, or have it SSH into your raspberry pi and do the installation.
 All you need to do is provide Claude the instructions (this readme), the files, the location of your library and the location of your plugin folder.
-Generally it will help you with updating the version of YT-dlp which gets deprecated sosmewhat often, 
+Generally it will help you with updating the version of YT-dlp which gets deprecated sosmewhat often,
 and making sure all permissions are up and running properly !!!**
 
 
 There are three sensible levels of install. Pick whichever fits how
 much setup you want to do.
+
+### Install through Jellyfin's plugin catalog
+
+In Jellyfin, open **Dashboard → Plugins → Repositories**, add this repository
+URL, then install **Music Discovery** from the Catalog:
+
+`https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/manifest.json`
+
+The catalog installs the Jellyfin plugin only. `ytmusic-stream-server` and
+the other companion services are still installed separately as described below.
 
 ### Level 1: Just the plugin (5 minutes)
 You'll get **14 discovery playlists** (8 Deezer + 6 internet radio),
@@ -175,7 +185,7 @@ until you add Level 2.
 2. Find Jellyfin's plugins folder for your install — see
    [`plugin/INSTALL.md`](plugin/INSTALL.md) for the path on every
    common platform.
-3. Make a folder named `MusicDiscovery_0.1.0.0` inside the plugins
+3. Make a folder named `MusicDiscovery_0.1.1.0` inside the plugins
    folder, unzip the bundle into it.
 4. Restart Jellyfin. The plugin appears under **Dashboard → Plugins
    → Music Discovery**.

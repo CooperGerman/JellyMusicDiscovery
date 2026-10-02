@@ -1,0 +1,20 @@
+[
+  {
+    "category": "Metadata",
+    "guid": "7b3a1c84-9a2f-4d66-8c12-5f9a8d7e6b40",
+    "name": "Music Discovery",
+    "description": "Search for music inside Jellyfin and discover tracks, videos, and playlists.",
+    "owner": "CooperGerman",
+    "overview": "Adds a discovery layer to Jellyfin's music library, with optional Lidarr requests and streaming companions.",
+    "versions": [
+      {
+        "version": "0.1.1.0",
+        "changelog": "Fix playback reporting errors for synthetic music-video items.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
+        "checksum": "da30f74015399c7280f754466f5b28af",
+        "timestamp": "2026-10-02T20:32:46Z"
+      }
+    ]
+  }
+]
