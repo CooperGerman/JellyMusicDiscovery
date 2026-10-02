@@ -98,12 +98,6 @@ public class MusicSearchActionFilter : IAsyncResultFilter
                 await TryAugmentAsync(ctx, term!, cts.Token).ConfigureAwait(false);
                 _log.LogInformation("[mdiscover-search] cache size after augment: {Size}", _cache.Count);
             }
-            else if (ShouldAugmentArtistAlbums(ctx))
-            {
-                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ctx.HttpContext.RequestAborted);
-                cts.CancelAfter(TimeSpan.FromSeconds(3));
-                await TryAugmentArtistAlbumsAsync(ctx, cts.Token).ConfigureAwait(false);
-            }
             else if (ShouldAugmentArtistVideos(ctx))
             {
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(ctx.HttpContext.RequestAborted);
@@ -162,12 +156,6 @@ public class MusicSearchActionFilter : IAsyncResultFilter
         return true;
     }
 
-    /// <summary>
-    /// Detect: an artist's album page (`/Items?albumArtistIds=X&IncludeItemTypes=MusicAlbum`).
-    /// Fires only if the response is non-empty (so we know the artist's name)
-    /// and the artist guid is NOT one of our stubs (those are handled by
-    /// MusicItemDetailActionFilter via direct Deezer lookup).
-    /// </summary>
     /// <summary>
     /// Detect "Recently Played" home-screen queries. Both Finer and web
     /// fire this as a sort-by-DatePlayed request, with no explicit
@@ -451,116 +439,6 @@ public class MusicSearchActionFilter : IAsyncResultFilter
         qr.Items = combined;
         qr.TotalRecordCount = combined.Length;
         _log.LogInformation("[mdiscover-search] playlist augment: appended {N} discovery playlists", addItems.Count);
-    }
-
-    private bool ShouldAugmentArtistAlbums(ResultExecutingContext ctx)
-    {
-        var cfg = Plugin.Instance?.Configuration;
-        if (cfg is null || !cfg.EnableSearchInjection) return false;
-
-        var http = ctx.HttpContext;
-        // Need an artist filter on the query.
-        if (!TryGetGuidListFromQuery(http, "albumArtistIds", out var ids)
-            && !TryGetGuidListFromQuery(http, "artistIds", out ids))
-            return false;
-        if (ids.Count == 0) return false;
-
-        // If the artist itself is one of our stubs, the action filter already
-        // synthesized the album list — don't double up.
-        foreach (var g in ids)
-            if (_cache.TryGet(g, out var e) && e is { Kind: "artist" })
-                return false;
-
-        // The query must be asking for albums.
-        var includeTypes = ExtractIncludeItemTypes(http);
-        if (includeTypes.Count > 0 && !includeTypes.Contains("MusicAlbum")) return false;
-
-        return ctx.Result is ObjectResult { Value: QueryResult<BaseItemDto> };
-    }
-
-    private async Task TryAugmentArtistAlbumsAsync(ResultExecutingContext ctx, CancellationToken ct)
-    {
-        if (ctx.Result is not ObjectResult or || or.Value is not QueryResult<BaseItemDto> qr) return;
-
-        // Pull artist name from any existing real album in the response. If the
-        // library has at least one album by this artist, it'll have AlbumArtist
-        // set — otherwise we'd need a live Items lookup against the artist guid
-        // which is fragile. For empty libraries we just skip the augmentation;
-        // the user can find the artist via the search-result stub artist instead.
-        string? artistName = null;
-        foreach (var item in qr.Items)
-        {
-            if (!string.IsNullOrWhiteSpace(item.AlbumArtist)) { artistName = item.AlbumArtist; break; }
-            var first = item.Artists?.FirstOrDefault();
-            if (!string.IsNullOrWhiteSpace(first)) { artistName = first; break; }
-        }
-        if (string.IsNullOrWhiteSpace(artistName))
-        {
-            _log.LogInformation("[mdiscover-search] artist-album augment skipped: no artist name in response");
-            return;
-        }
-
-        // Find Deezer's artist record: top search hit by name. We're already
-        // relying on Deezer's search ranking elsewhere — same trade-off here.
-        var artistSearch = await _deezer.SearchArtistsAsync(artistName, 5, ct).ConfigureAwait(false);
-        var dzArtist = artistSearch.Data?.FirstOrDefault(a =>
-            string.Equals(a.Name, artistName, StringComparison.OrdinalIgnoreCase));
-        // Fallback to the top-ranked match if no exact name hit (handles
-        // diacritics / capitalization differences).
-        dzArtist ??= artistSearch.Data?.FirstOrDefault();
-        if (dzArtist is null || dzArtist.Id == 0)
-        {
-            _log.LogInformation("[mdiscover-search] artist-album augment: no Deezer match for {Artist}", artistName);
-            return;
-        }
-
-        var albumsResp = await _deezer.GetArtistAlbumsAsync(dzArtist.Id, 100, ct).ConfigureAwait(false);
-        var dzAlbums = albumsResp?.Data ?? new();
-        if (dzAlbums.Count == 0) return;
-
-        // Dedupe vs library albums already in the response. Lower-cased,
-        // whitespace-normalized title compare is good enough for the typical
-        // "I already have Enema of the State" case.
-        var existingTitles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var item in qr.Items)
-        {
-            var n = NormalizeTitle(item.Name);
-            if (!string.IsNullOrEmpty(n)) existingTitles.Add(n);
-        }
-
-        var addItems = new List<BaseItemDto>();
-        foreach (var al in dzAlbums.Where(IsQualityAlbum))
-        {
-            var norm = NormalizeTitle(al.Title);
-            if (string.IsNullOrEmpty(norm) || existingTitles.Contains(norm)) continue;
-
-            // Stamp parent artist — Deezer's /artist/{id}/albums omits it.
-            if (al.Artist is null) al.Artist = new DeezerClient.DzArtist { Id = dzArtist.Id, Name = dzArtist.Name };
-
-            var id = Services.DiscoveryManager.StubGuid("dz-album", al.Id.ToString());
-            _cache.Put(id, new DiscoveryItemCache.Entry
-            {
-                Kind = "album",
-                Artist = al.Artist?.Name ?? artistName,
-                AlbumName = al.Title,
-                DeezerAlbumId = al.Id,
-                DeezerArtistId = al.Artist?.Id ?? dzArtist.Id,
-                PrimaryImageUrl = al.CoverXl ?? al.CoverBig,
-            });
-            addItems.Add(BuildAlbumDto(id, al));
-            existingTitles.Add(norm);
-        }
-
-        if (addItems.Count == 0)
-        {
-            _log.LogInformation("[mdiscover-search] artist-album augment: no new albums to add for {Artist}", artistName);
-            return;
-        }
-
-        var combined = qr.Items.Concat(addItems).ToArray();
-        qr.Items = combined;
-        qr.TotalRecordCount = combined.Length;
-        _log.LogInformation("[mdiscover-search] artist-album augment: added {N} stub albums for {Artist}", addItems.Count, artistName);
     }
 
     // -----------------------------------------------------------------
