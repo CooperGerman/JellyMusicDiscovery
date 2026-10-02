@@ -8,12 +8,12 @@
     "overview": "Adds a discovery layer to Jellyfin's music library, with optional Lidarr requests and streaming companions.",
     "versions": [
       {
-        "version": "0.1.2.0",
-        "changelog": "- Target Jellyfin 12.1 on .NET 10.\n- Intercept synthetic-video playback reports to prevent UserData foreign-key errors.\n- Inject request controls into index.html only; leave JavaScript chunks untouched.",
+        "version": "0.1.8.0",
+        "changelog": "- Replace Play with a centered, type-labeled Request action on non-video discovery cards; YouTube videos retain Play.\n- Delay hiding empty native search rows until results have time to render, preventing section flicker.\n- Keep the JellyMusicDiscovery and Play from YouTube search sections stable without flicker.\n- Put YouTube music videos in a separate Play from YouTube search section after discovery results.\n- Hide empty native search sections.\n- Group discovery cards in a separate JellyMusicDiscovery section after local results.\n- Target Jellyfin 12.1 on .NET 10.\n- Intercept synthetic-video playback reports to prevent UserData foreign-key errors.\n- Inject request controls into index.html only; leave JavaScript chunks untouched.",
         "targetAbi": "12.1.0.0",
         "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
-        "checksum": "864c634ec596fa7ebc25cba43722c3d2",
-        "timestamp": "2026-10-02T21:01:16Z"
+        "checksum": "f969983441965ed7fdb3d337a66628c8",
+        "timestamp": "2026-10-02T22:17:21Z"
       }
     ]
   }

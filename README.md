@@ -191,7 +191,7 @@ tested end-to-end in this fork**. Its setup is documented in the
 ## What's in this bundle
 
 ```
-JellyMusicDiscovery-v0.1.2.0/
+JellyMusicDiscovery-v0.1.8.0/
 ├── README.md                       ← you are here (architecture + full stack)
 ├── Makefile                        ← root build/package entry point
 ├── manifest.json                   ← Jellyfin plugin-catalog manifest

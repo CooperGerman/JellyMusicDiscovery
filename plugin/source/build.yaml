@@ -1,6 +1,6 @@
 name: "JellyMusicDiscovery"
 guid: "7b3a1c84-9a2f-4d66-8c12-5f9a8d7e6b40"
-version: "0.1.2.0"
+version: "0.1.8.0"
 targetAbi: "12.1.0.0"
 framework: "net10.0"
 owner: "self-hosted"
