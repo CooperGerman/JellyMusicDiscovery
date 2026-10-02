@@ -6,6 +6,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using JellyMusicDiscovery.Services;
 using Jellyfin.Data.Enums;
+using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.Audio;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Querying;
@@ -1014,20 +1016,40 @@ public class MusicSearchActionFilter : IAsyncResultFilter
         // augmented artist-page (real artist) include only the missing albums.
         var existingArtistNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var existingAlbumKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var existingAlbumStubKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var localAlbumKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var existingTrackKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var existingTrackStubKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var localTrackKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var localTrackMatches = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in qr.Items)
         {
             if (item.Type == BaseItemKind.MusicArtist && !string.IsNullOrWhiteSpace(item.Name))
                 existingArtistNames.Add(item.Name.Trim());
             else if (item.Type == BaseItemKind.MusicAlbum)
             {
-                var key = $"{item.AlbumArtist ?? string.Empty}|{NormalizeTitle(item.Name)}";
-                existingAlbumKeys.Add(key);
+                var artist = item.AlbumArtist
+                    ?? item.AlbumArtists?.FirstOrDefault()?.Name
+                    ?? item.Artists?.FirstOrDefault();
+                var key = AlbumMatchKey(artist, item.Name);
+                if (item.Tags?.Contains(Tags.Stub, StringComparer.OrdinalIgnoreCase) == true)
+                    existingAlbumStubKeys.Add(key);
+                else
+                {
+                    existingAlbumKeys.Add(key);
+                    localAlbumKeys.Add(key);
+                }
             }
             else if (item.Type == BaseItemKind.Audio)
             {
-                var key = $"{item.AlbumArtist ?? item.Artists?.FirstOrDefault() ?? string.Empty}|{NormalizeTitle(item.Name)}";
-                existingTrackKeys.Add(key);
+                var key = AlbumMatchKey(item.AlbumArtist ?? item.Artists?.FirstOrDefault(), item.Name);
+                if (item.Tags?.Contains(Tags.Stub, StringComparer.OrdinalIgnoreCase) == true)
+                    existingTrackStubKeys.Add(key);
+                else
+                {
+                    existingTrackKeys.Add(key);
+                    localTrackKeys.Add(key);
+                }
             }
         }
 
@@ -1050,10 +1072,25 @@ public class MusicSearchActionFilter : IAsyncResultFilter
 
         if (wantAlbums)
         {
+            var localAlbumMatches = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
             foreach (var al in albums.Where(IsQualityAlbum))
             {
-                var key = $"{al.Artist?.Name ?? string.Empty}|{NormalizeTitle(al.Title)}";
+                var artistName = al.Artist?.Name ?? string.Empty;
+                var key = AlbumMatchKey(artistName, al.Title);
                 if (existingAlbumKeys.Contains(key)) continue;
+                if (!localAlbumMatches.TryGetValue(key, out var alreadyInLibrary))
+                {
+                    alreadyInLibrary = IsAlbumInLibrary(artistName, al.Title);
+                    localAlbumMatches[key] = alreadyInLibrary;
+                }
+                if (alreadyInLibrary)
+                {
+                    existingAlbumKeys.Add(key);
+                    localAlbumKeys.Add(key);
+                    continue;
+                }
+                if (existingAlbumStubKeys.Contains(key)) continue;
+
                 var id = Services.DiscoveryManager.StubGuid("dz-album", al.Id.ToString());
                 _cache.Put(id, new DiscoveryItemCache.Entry
                 {
@@ -1065,7 +1102,25 @@ public class MusicSearchActionFilter : IAsyncResultFilter
                     PrimaryImageUrl = al.CoverXl ?? al.CoverBig,
                 });
                 addItems.Add(BuildAlbumDto(id, al));
+                existingAlbumKeys.Add(key);
+                existingAlbumStubKeys.Add(key);
             }
+        }
+
+        if (localAlbumKeys.Count > 0)
+        {
+            qr.Items = qr.Items.Where(item =>
+            {
+                if (item.Type != BaseItemKind.MusicAlbum
+                    || item.Tags?.Contains(Tags.Stub, StringComparer.OrdinalIgnoreCase) != true)
+                    return true;
+
+                var artist = item.AlbumArtist
+                    ?? item.AlbumArtists?.FirstOrDefault()?.Name
+                    ?? item.Artists?.FirstOrDefault();
+                return !localAlbumKeys.Contains(AlbumMatchKey(artist, item.Name));
+            }).ToArray();
+            qr.TotalRecordCount = qr.Items.Count;
         }
 
         if (wantTracks)
@@ -1079,8 +1134,20 @@ public class MusicSearchActionFilter : IAsyncResultFilter
                 if (t.Artist is { } tartist && !IsQualityArtist(tartist)) continue;
 
                 // Skip if a real library track with same artist+title already exists.
-                var trackKey = $"{t.Artist?.Name ?? string.Empty}|{NormalizeTitle(t.Title)}";
+                var trackKey = AlbumMatchKey(t.Artist?.Name, t.Title);
                 if (existingTrackKeys.Contains(trackKey)) continue;
+                if (!localTrackMatches.TryGetValue(trackKey, out var alreadyInLibrary))
+                {
+                    alreadyInLibrary = IsTrackInLibrary(t.Artist?.Name ?? string.Empty, t.Title);
+                    localTrackMatches[trackKey] = alreadyInLibrary;
+                }
+                if (alreadyInLibrary)
+                {
+                    existingTrackKeys.Add(trackKey);
+                    localTrackKeys.Add(trackKey);
+                    continue;
+                }
+                if (existingTrackStubKeys.Contains(trackKey)) continue;
 
                 var id = Services.DiscoveryManager.StubGuid("dz-track", t.Id.ToString());
                 var trackEntry = new DiscoveryItemCache.Entry
@@ -1125,6 +1192,7 @@ public class MusicSearchActionFilter : IAsyncResultFilter
                 // Track this so iTunes results that match the same artist+title
                 // get deduped against this Deezer hit.
                 existingTrackKeys.Add(trackKey);
+                existingTrackStubKeys.Add(trackKey);
             }
         }
 
@@ -1138,8 +1206,20 @@ public class MusicSearchActionFilter : IAsyncResultFilter
             foreach (var s in itunesSongs)
             {
                 if (string.IsNullOrEmpty(s.TrackName) || string.IsNullOrEmpty(s.ArtistName)) continue;
-                var iTrackKey = $"{s.ArtistName}|{NormalizeTitle(s.TrackName)}";
+                var iTrackKey = AlbumMatchKey(s.ArtistName, s.TrackName);
                 if (existingTrackKeys.Contains(iTrackKey)) continue;
+                if (!localTrackMatches.TryGetValue(iTrackKey, out var alreadyInLibrary))
+                {
+                    alreadyInLibrary = IsTrackInLibrary(s.ArtistName, s.TrackName);
+                    localTrackMatches[iTrackKey] = alreadyInLibrary;
+                }
+                if (alreadyInLibrary)
+                {
+                    existingTrackKeys.Add(iTrackKey);
+                    localTrackKeys.Add(iTrackKey);
+                    continue;
+                }
+                if (existingTrackStubKeys.Contains(iTrackKey)) continue;
 
                 var id = s.TrackId.HasValue
                     ? Services.DiscoveryManager.StubGuid("itunes-track", s.TrackId.Value.ToString())
@@ -1160,7 +1240,22 @@ public class MusicSearchActionFilter : IAsyncResultFilter
                 _registrar.RegisterStubTrack(id, trackEntry);
                 addItems.Add(BuildItunesTrackDto(id, s, artwork));
                 existingTrackKeys.Add(iTrackKey);
+                existingTrackStubKeys.Add(iTrackKey);
             }
+        }
+
+        if (localTrackKeys.Count > 0)
+        {
+            qr.Items = qr.Items.Where(item =>
+            {
+                if (item.Type != BaseItemKind.Audio
+                    || item.Tags?.Contains(Tags.Stub, StringComparer.OrdinalIgnoreCase) != true)
+                    return true;
+
+                return !localTrackKeys.Contains(AlbumMatchKey(
+                    item.AlbumArtist ?? item.Artists?.FirstOrDefault(), item.Name));
+            }).ToArray();
+            qr.TotalRecordCount = qr.Items.Count;
         }
 
         if (addItems.Count == 0) return;
@@ -1169,6 +1264,64 @@ public class MusicSearchActionFilter : IAsyncResultFilter
         qr.Items = combined;
         qr.TotalRecordCount = combined.Length;
     }
+
+    private bool IsAlbumInLibrary(string artistName, string? albumTitle)
+    {
+        var artistKey = NormalizeAlbumMatchValue(artistName);
+        var titleKey = NormalizeAlbumMatchValue(albumTitle);
+        if (artistKey.Length == 0 || titleKey.Length == 0) return false;
+
+        var localAlbums = _libraryManager.GetItemList(new InternalItemsQuery
+        {
+            SearchTerm = albumTitle,
+            IncludeItemTypes = new[] { BaseItemKind.MusicAlbum },
+            Recursive = true,
+            Limit = 100,
+        });
+
+        return localAlbums.OfType<MusicAlbum>().Any(localAlbum =>
+        {
+            if (localAlbum.Tags?.Contains(Tags.Stub, StringComparer.OrdinalIgnoreCase) == true
+                || NormalizeAlbumMatchValue(localAlbum.Name) != titleKey)
+                return false;
+
+            var localArtists = (localAlbum.AlbumArtists ?? Array.Empty<string>())
+                .Concat(localAlbum.Artists ?? Array.Empty<string>());
+            return localArtists.Any(localArtist => NormalizeAlbumMatchValue(localArtist) == artistKey);
+        });
+    }
+
+    private bool IsTrackInLibrary(string artistName, string? trackTitle)
+    {
+        var artistKey = NormalizeAlbumMatchValue(artistName);
+        var titleKey = NormalizeAlbumMatchValue(trackTitle);
+        if (artistKey.Length == 0 || titleKey.Length == 0) return false;
+
+        var localTracks = _libraryManager.GetItemList(new InternalItemsQuery
+        {
+            SearchTerm = trackTitle,
+            IncludeItemTypes = new[] { BaseItemKind.Audio },
+            Recursive = true,
+            Limit = 100,
+        });
+
+        return localTracks.OfType<Audio>().Any(localTrack =>
+        {
+            if (localTrack.Tags?.Contains(Tags.Stub, StringComparer.OrdinalIgnoreCase) == true
+                || NormalizeAlbumMatchValue(localTrack.Name) != titleKey)
+                return false;
+
+            var localArtists = (localTrack.Artists ?? Array.Empty<string>())
+                .Concat(localTrack.AlbumArtists ?? Array.Empty<string>());
+            return localArtists.Any(localArtist => NormalizeAlbumMatchValue(localArtist) == artistKey);
+        });
+    }
+
+    private static string AlbumMatchKey(string? artist, string? title)
+        => NormalizeAlbumMatchValue(artist) + "|" + NormalizeAlbumMatchValue(title);
+
+    private static string NormalizeAlbumMatchValue(string? value)
+        => new(NormalizeTitle(value).Where(char.IsLetterOrDigit).ToArray());
 
     // -----------------------------------------------------------------
     // /Search/Hints — SearchHintResult
@@ -1181,6 +1334,13 @@ public class MusicSearchActionFilter : IAsyncResultFilter
     {
         var hits = new List<SearchHint>();
         var seenTrackKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var localAlbumMatches = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        var localTrackMatches = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        foreach (var hint in sh.SearchHints ?? Array.Empty<SearchHint>())
+        {
+            if (hint.Type == BaseItemKind.Audio && !string.IsNullOrWhiteSpace(hint.AlbumArtist))
+                seenTrackKeys.Add(AlbumMatchKey(hint.AlbumArtist, hint.Name));
+        }
         foreach (var a in artists.Where(IsQualityArtist))
         {
             var id = Services.DiscoveryManager.StubGuid("dz-artist", a.Id.ToString());
@@ -1189,6 +1349,15 @@ public class MusicSearchActionFilter : IAsyncResultFilter
         }
         foreach (var al in albums.Where(IsQualityAlbum))
         {
+            var artistName = al.Artist?.Name ?? string.Empty;
+            var albumKey = AlbumMatchKey(artistName, al.Title);
+            if (!localAlbumMatches.TryGetValue(albumKey, out var albumIsLocal))
+            {
+                albumIsLocal = IsAlbumInLibrary(artistName, al.Title);
+                localAlbumMatches[albumKey] = albumIsLocal;
+            }
+            if (albumIsLocal) continue;
+
             var id = Services.DiscoveryManager.StubGuid("dz-album", al.Id.ToString());
             _cache.Put(id, new DiscoveryItemCache.Entry { Kind = "album", Artist = al.Artist?.Name, AlbumName = al.Title, DeezerAlbumId = al.Id, DeezerArtistId = al.Artist?.Id, PrimaryImageUrl = al.CoverXl ?? al.CoverBig });
             hits.Add(new SearchHint { Id = id, Name = al.Title ?? "", Type = BaseItemKind.MusicAlbum, MediaType = MediaType.Unknown, Album = al.Title, AlbumArtist = al.Artist?.Name });
@@ -1199,12 +1368,25 @@ public class MusicSearchActionFilter : IAsyncResultFilter
             if (t.Album is { } talAlbum && !IsQualityAlbum(talAlbum)) continue;
             if (t.Artist is { } tartist && !IsQualityArtist(tartist)) continue;
 
+            var trackKey = AlbumMatchKey(t.Artist?.Name, t.Title);
+            if (seenTrackKeys.Contains(trackKey)) continue;
+            if (!localTrackMatches.TryGetValue(trackKey, out var trackIsLocal))
+            {
+                trackIsLocal = IsTrackInLibrary(t.Artist?.Name ?? string.Empty, t.Title);
+                localTrackMatches[trackKey] = trackIsLocal;
+            }
+            if (trackIsLocal)
+            {
+                seenTrackKeys.Add(trackKey);
+                continue;
+            }
+
             var id = Services.DiscoveryManager.StubGuid("dz-track", t.Id.ToString());
             var trackEntry = new DiscoveryItemCache.Entry { Kind = "track", Artist = t.Artist?.Name, AlbumName = t.Album?.Title, TrackTitle = t.Title, DeezerTrackId = t.Id, DeezerAlbumId = t.Album?.Id, DeezerArtistId = t.Artist?.Id, PrimaryImageUrl = t.Album?.CoverBig, DurationSeconds = t.Duration };
             _cache.Put(id, trackEntry);
             _registrar.RegisterStubTrack(id, trackEntry);
             hits.Add(new SearchHint { Id = id, Name = t.Title ?? "", Type = BaseItemKind.Audio, MediaType = MediaType.Audio, Album = t.Album?.Title, AlbumArtist = t.Artist?.Name, RunTimeTicks = t.Duration.HasValue ? (long?)TimeSpan.FromSeconds(t.Duration.Value).Ticks : null });
-            seenTrackKeys.Add($"{t.Artist?.Name ?? string.Empty}|{NormalizeTitle(t.Title)}");
+            seenTrackKeys.Add(trackKey);
         }
 
         // iTunes-sourced track hints (Apple's catalog), deduped against the
@@ -1213,8 +1395,18 @@ public class MusicSearchActionFilter : IAsyncResultFilter
         foreach (var s in itunesSongs)
         {
             if (string.IsNullOrEmpty(s.TrackName) || string.IsNullOrEmpty(s.ArtistName)) continue;
-            var key = $"{s.ArtistName}|{NormalizeTitle(s.TrackName)}";
+            var key = AlbumMatchKey(s.ArtistName, s.TrackName);
             if (seenTrackKeys.Contains(key)) continue;
+            if (!localTrackMatches.TryGetValue(key, out var trackIsLocal))
+            {
+                trackIsLocal = IsTrackInLibrary(s.ArtistName, s.TrackName);
+                localTrackMatches[key] = trackIsLocal;
+            }
+            if (trackIsLocal)
+            {
+                seenTrackKeys.Add(key);
+                continue;
+            }
             var id = s.TrackId.HasValue
                 ? Services.DiscoveryManager.StubGuid("itunes-track", s.TrackId.Value.ToString())
                 : Services.DiscoveryManager.StubGuid("itunes-track-name", key);
