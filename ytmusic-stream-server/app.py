@@ -25,6 +25,7 @@ import time
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, JSONResponse, StreamingResponse, Response
 from ytmusicapi import YTMusic
 import httpx
@@ -34,6 +35,18 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger("ytmusic-stream-server")
 
 app = FastAPI(title="ytmusic-stream-server", version="0.1.0")
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "http://media-server:8096").split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_methods=["GET", "HEAD", "OPTIONS"],
+    allow_headers=["*"],
+    expose_headers=["Accept-Ranges", "Content-Length", "Content-Range"],
+)
 
 # A single shared YTMusic client — instantiation is non-trivial.
 _yt: Optional[YTMusic] = None

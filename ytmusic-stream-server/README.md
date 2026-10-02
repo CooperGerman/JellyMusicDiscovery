@@ -26,4 +26,12 @@ docker compose up -d --build
 ## Plugin config
 
 Set `YtMusicStreamServerUrl` to `http://<pi>:8077` in the Music Discovery
-plugin config page.
+plugin config page. The stream service allows the default Jellyfin browser
+origin `http://media-server:8096`. If Jellyfin is opened using a different
+LAN hostname or IP, set `CORS_ORIGINS` on this service to a comma-separated
+list of the browser-facing Jellyfin origins, for example:
+
+```yaml
+environment:
+	CORS_ORIGINS: http://192.168.1.20:8096,http://media-server:8096
+```
