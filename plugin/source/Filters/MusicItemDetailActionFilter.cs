@@ -175,17 +175,15 @@ public class MusicItemDetailActionFilter : IAsyncActionFilter, IAsyncResultFilte
                 return;
             }
 
-            // /Sessions/Playing(/Progress|/Stopped|/Ping) for stub tracks. Jellyfin
-            // 404s these because the itemId isn't in the library — and the client
-            // ends up with a stale "now playing" state on auto-advance, so the UI
-            // shows the previous track's title and artwork even though the audio
-            // moved on. Intercept and return 204 No Content so the client gets
-            // a clean success.
+            // Synthetic track/video stubs aren't persisted in BaseItems, so
+            // Jellyfin's normal playback reporting can fail its UserData FK.
+            // Intercept these reports so streaming still works without 500s.
             if (IsSessionsPlayingRoute(ctx) && TryExtractSessionItemId(ctx, out var sesId)
-                && _cache.TryGet(sesId, out var sesEntry) && sesEntry is { Kind: "track" })
+                && _cache.TryGet(sesId, out var sesEntry)
+                && sesEntry is { Kind: "track" or "video" })
             {
-                _log.LogInformation("[mdiscover] Sessions/Playing intercepted for stub track {Id} ({Path})",
-                    sesId, ctx.HttpContext.Request.Path);
+                _log.LogInformation("[mdiscover] Sessions/Playing intercepted for stub {Kind} {Id} ({Path})",
+                    sesEntry.Kind, sesId, ctx.HttpContext.Request.Path);
                 ctx.Result = new NoContentResult();
                 return;
             }

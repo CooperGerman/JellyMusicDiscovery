@@ -15,6 +15,7 @@ package: build
 	# strips the Jellyfin/Microsoft/System DLLs that ARE bundled by the
 	# host, so whatever's left in bin/Release/net9.0 is what we ship.
 	cd bin/Release/net9.0 && zip -j ../../../../artifacts/JellyMusicDiscovery.zip JellyMusicDiscovery.dll TagLibSharp.dll meta.json
+	cp ../artifacts/JellyMusicDiscovery.zip ../JellyMusicDiscovery.zip
 	@echo "Packaged: ../artifacts/JellyMusicDiscovery.zip"
 
 clean:

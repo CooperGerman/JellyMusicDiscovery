@@ -22,7 +22,7 @@ namespace JellyMusicDiscovery.Services;
 ///   - On startup: read JSON if it exists, hydrate the dictionary.
 ///
 /// File location: &lt;plugin-data-dir&gt;/discovery-cache.json
-/// (e.g. /config/data/plugins/MusicDiscovery_0.1.0.0/discovery-cache.json on the Pi)
+/// (e.g. /config/data/plugins/MusicDiscovery_0.1.1.0/discovery-cache.json on the Pi)
 /// </summary>
 public class DiscoveryItemCache
 {
