@@ -124,6 +124,7 @@ public class LibraryRegistrar
                 // /mdiscover-video/ and routes to /video/by-id/{vid}.
                 Path = $"/mdiscover-video/{id:N}.mp4",
             };
+            mv.MarkAsStub();
             _lib.RegisterItem(mv);
             _registered[id] = fingerprint;
             _log.LogInformation("[mdiscover] {Verb} synthetic MusicVideo for stub {Id}: {Title} — {Artist}",
