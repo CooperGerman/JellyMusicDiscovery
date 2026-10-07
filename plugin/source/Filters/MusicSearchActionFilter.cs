@@ -94,7 +94,9 @@ public class MusicSearchActionFilter : IAsyncResultFilter
             if (should)
             {
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(ctx.HttpContext.RequestAborted);
-                cts.CancelAfter(TimeSpan.FromSeconds(3));
+                var mediaTypes = ExtractStringSet(ctx.HttpContext, "mediaTypes", "MediaTypes");
+                bool isVideoOnlySearch = mediaTypes.Contains("Video") && !mediaTypes.Contains("Audio");
+                cts.CancelAfter(isVideoOnlySearch ? TimeSpan.FromSeconds(8) : TimeSpan.FromSeconds(3));
                 await TryAugmentAsync(ctx, term!, cts.Token).ConfigureAwait(false);
                 _log.LogInformation("[mdiscover-search] cache size after augment: {Size}", _cache.Count);
             }
