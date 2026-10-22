@@ -19,6 +19,14 @@
           </label>
         </div>
 
+        <div class="checkboxContainer">
+          <label>
+            <input is="emby-checkbox" type="checkbox" id="EnableDiscoveryPlaylists" />
+            <span>Show plugin-generated discovery playlists</span>
+          </label>
+          <div class="fieldDescription">Controls curated charts, radio, and mood playlists. Search results and your own playlists are not affected.</div>
+        </div>
+
         <h3>Library</h3>
         <div class="inputContainer">
           <label class="inputLabel" for="MusicLibraryRoot">Music library root path</label>
@@ -129,7 +137,7 @@
   const PluginId = '7b3a1c84-9a2f-4d66-8c12-5f9a8d7e6b40';
 
   const fields = [
-    'EnableSearchInjection','MusicLibraryRoot','DiscoveryDownloadSubdir',
+    'EnableSearchInjection','EnableDiscoveryPlaylists','MusicLibraryRoot','DiscoveryDownloadSubdir',
     'SearchSource','SearchLimit',
     'MusicBrainzUserAgent','MusicBrainzCacheTtlSeconds',
     'LidarrBaseUrl','LidarrApiKey','LidarrAddMonitored','LidarrSearchOnAdd',

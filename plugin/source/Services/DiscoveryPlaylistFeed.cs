@@ -114,6 +114,12 @@ public class DiscoveryPlaylistFeed
     /// </summary>
     public async Task RefreshAsync(CancellationToken ct)
     {
+        if (Plugin.Instance?.Configuration.EnableDiscoveryPlaylists == false)
+        {
+            _log.LogInformation("[mdiscover-feed] refresh skipped because discovery playlists are disabled");
+            return;
+        }
+
         try
         {
             await RefreshDeezerAsync(ct).ConfigureAwait(false);

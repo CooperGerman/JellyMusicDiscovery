@@ -361,7 +361,7 @@ public class MusicSearchActionFilter : IAsyncResultFilter
     private bool ShouldAugmentPlaylists(ResultExecutingContext ctx)
     {
         var cfg = Plugin.Instance?.Configuration;
-        if (cfg is null || !cfg.EnableSearchInjection) return false;
+        if (cfg is null || !cfg.EnableSearchInjection || !cfg.EnableDiscoveryPlaylists) return false;
         if (ctx.Result is not ObjectResult { Value: QueryResult<BaseItemDto> qr }) return false;
 
         // Pattern 1: explicit IncludeItemTypes=Playlist filter.

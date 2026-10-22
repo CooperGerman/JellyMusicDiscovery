@@ -5,6 +5,7 @@ namespace JellyMusicDiscovery.Configuration;
 public class PluginConfiguration : BasePluginConfiguration
 {
     public bool EnableSearchInjection { get; set; } = true;
+    public bool EnableDiscoveryPlaylists { get; set; } = true;
 
     public string MusicLibraryRoot { get; set; } = "/music";
     public string DiscoveryDownloadSubdir { get; set; } = ".discovery-downloads";

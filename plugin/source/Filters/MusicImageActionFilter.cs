@@ -51,7 +51,9 @@ public class MusicImageActionFilter : IAsyncActionFilter
 
             // Discovery playlist? Different storage from the item cache —
             // its image URL lives in the playlist DTO.
-            var dp = _discoveryFeed.Get(itemId);
+            var dp = Plugin.Instance?.Configuration.EnableDiscoveryPlaylists == true
+                ? _discoveryFeed.Get(itemId)
+                : null;
             if (dp is not null && !string.IsNullOrEmpty(dp.ImageUrl))
             {
                 ctx.Result = new RedirectResult(dp.ImageUrl);

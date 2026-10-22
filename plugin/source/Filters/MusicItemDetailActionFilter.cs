@@ -399,7 +399,8 @@ public class MusicItemDetailActionFilter : IAsyncActionFilter, IAsyncResultFilte
             // (a-discovery) Single-item lookup for one of our synthetic
             // discovery playlists (Top 100 Global, etc.) — not in the regular
             // _cache, lives in DiscoveryPlaylistFeed.
-            if (TryExtractSingleItemId(ctx, out var dpId))
+            if (Plugin.Instance?.Configuration.EnableDiscoveryPlaylists == true
+                && TryExtractSingleItemId(ctx, out var dpId))
             {
                 var dp = _discoveryFeed.Get(dpId);
                 if (dp is not null)
@@ -415,7 +416,8 @@ public class MusicItemDetailActionFilter : IAsyncActionFilter, IAsyncResultFilte
             // Distinct from the user-playlist linkage path because the
             // children come from the DiscoveryPlaylistFeed snapshot, not
             // _playlistLinks.
-            if (TryExtractDiscoveryPlaylistChildrenId(ctx, out var dpcId))
+            if (Plugin.Instance?.Configuration.EnableDiscoveryPlaylists == true
+                && TryExtractDiscoveryPlaylistChildrenId(ctx, out var dpcId))
             {
                 var dp = _discoveryFeed.Get(dpcId);
                 if (dp is not null)
