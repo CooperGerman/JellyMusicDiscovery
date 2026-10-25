@@ -30,6 +30,13 @@ public sealed class PopularityController : ControllerBase
         _index = index;
     }
 
+    [HttpGet("status")]
+    public ActionResult<PopularityProviderStatus> GetStatus()
+    {
+        var version = typeof(PopularityController).Assembly.GetName().Version?.ToString(4) ?? "0.0.0.0";
+        return Ok(new PopularityProviderStatus(version, _index.TrackCount));
+    }
+
     [HttpGet]
     public ActionResult<PopularityBatchResponse> Get([FromQuery] Guid[] itemIds)
     {
@@ -135,3 +142,5 @@ public sealed record ArtistPopularityResponse(
 public sealed record TopPopularityResponse(
     IReadOnlyList<ArtistPopularityTrack> Tracks,
     int IndexedTrackCount);
+
+public sealed record PopularityProviderStatus(string Version, int IndexedTrackCount);

@@ -8,6 +8,14 @@
     "overview": "Adds a discovery layer to Jellyfin's music library, with optional Lidarr requests and streaming companions.",
     "versions": [
       {
+        "version": "0.1.16.0",
+        "changelog": "- Add a popularity-provider status endpoint for dependent clients to gate rank-based features.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
+        "checksum": "ebde801f03bca120965f12c9fc2371b3",
+        "timestamp": "2026-10-25T15:25:25Z"
+      },
+      {
         "version": "0.1.15.0",
         "changelog": "- Add top-ranked Deezer tracks endpoint for the artist-balanced Blind Test popularity mode.",
         "targetAbi": "12.1.0.0",
