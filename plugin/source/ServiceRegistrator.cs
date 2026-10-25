@@ -36,6 +36,7 @@ public class ServiceRegistrator : IPluginServiceRegistrator
         services.AddSingleton<DiscoveryManager>();
         services.AddSingleton<StreamSessionRegistry>();
         services.AddSingleton<DiscoveryItemCache>();
+        services.AddSingleton<PopularityRankIndex>();
         services.AddSingleton<IMediaSourceProvider, DiscoveryMediaSourceProvider>();
         services.AddHostedService<WebClientTransformationRegistration>();
 

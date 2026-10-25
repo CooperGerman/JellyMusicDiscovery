@@ -119,6 +119,9 @@
           <input is="emby-input" type="number" id="SlskdMinPeerSpeedKbps" min="0" />
         </div>
 
+        <h3>Global track popularity</h3>
+        <p>To build a local cache of Deezer's global track ranks, run <strong>Dashboard &gt; Scheduled Tasks &gt; Music Discovery: Index Deezer track popularity</strong>. The manual scan is resumable and rate-limited, and indexes Deezer's top tracks per artist. Ranks are stored in the plugin's data folder; library metadata and audio files are not changed.</p>
+
         <h3>Stub housekeeping</h3>
         <div class="inputContainer">
           <label class="inputLabel" for="StubGcMaxAgeHours">GC unrequested stubs after (hours)</label>

@@ -113,6 +113,12 @@ Deezer playlists need `ytmusic-stream-server` to be playable. Add
 on top, for **26 total discovery playlists** auto-injected into your
 Jellyfin home screen.
 
+### Global track popularity cache
+
+Run **Dashboard → Scheduled Tasks → Music Discovery: Index Deezer track popularity** to build a resumable local index. The scanner checks Deezer's artist top tracks, requires an exact normalized title and artist plus a compatible duration (or matching ISRC when both sides have one), and stores rank data in the plugin's data folder. It does not write to audio files or Jellyfin's `CommunityRating`.
+
+The cached scores remain available offline. `GET /mdiscover/popularity/top?limit=500` returns the most popular cached tracks, and `GET /mdiscover/popularity/artist?artist=...&limit=50` returns ranked tracks for an artist. Results are filtered to audio visible to the authenticated user. Deezer rank is a global-service popularity proxy, not a timeless consensus score; unmatched library tracks are omitted until a future scan matches them.
+
 ### 5. Synced lyrics for discovery tracks (built-in)
 Click play on a discovery hit and the player UI shows **karaoke-style
 synced lyrics** if `lrclib.net` has them — same source the popular
@@ -191,7 +197,7 @@ tested end-to-end in this fork**. Its setup is documented in the
 ## What's in this bundle
 
 ```
-JellyMusicDiscovery-v0.1.12.0/
+JellyMusicDiscovery-v0.1.13.0/
 ├── README.md                       ← you are here (architecture + full stack)
 ├── Makefile                        ← root build/package entry point
 ├── manifest.json                   ← Jellyfin plugin-catalog manifest

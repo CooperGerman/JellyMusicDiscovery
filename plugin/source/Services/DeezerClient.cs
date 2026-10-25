@@ -32,6 +32,17 @@ public class DeezerClient
     public Task<DzSearchResult<DzArtist>> SearchArtistsAsync(string query, int limit, CancellationToken ct) =>
         SearchAsync<DzArtist>("artist", query, limit, ct);
 
+    public async Task<DzSearchResult<DzArtist>?> SearchArtistsForPopularityAsync(string query, int limit, CancellationToken ct)
+    {
+        var key = $"artist:popularity:{query.ToLowerInvariant()}:{limit}";
+        if (TryCache<DzSearchResult<DzArtist>>(key, out var hit)) return hit;
+
+        var url = $"https://api.deezer.com/search/artist?q={Uri.EscapeDataString(query)}&limit={limit}";
+        var result = await SendAsync<DzSearchResult<DzArtist>>(url, ct).ConfigureAwait(false);
+        if (result is not null) Cache(key, result);
+        return result;
+    }
+
     public Task<DzSearchResult<DzAlbum>> SearchAlbumsAsync(string query, int limit, CancellationToken ct) =>
         SearchAsync<DzAlbum>("album", query, limit, ct);
 
@@ -184,6 +195,9 @@ public class DeezerClient
         public long Id { get; set; }
         public string? Title { get; set; }
         [JsonPropertyName("title_short")] public string? TitleShort { get; set; }
+        [JsonPropertyName("title_version")] public string? TitleVersion { get; set; }
+        [JsonPropertyName("isrc")] public string? Isrc { get; set; }
+        [JsonPropertyName("rank")] public int? Rank { get; set; }
         public int? Duration { get; set; } // seconds
         public DzArtist? Artist { get; set; }
         public DzAlbum? Album { get; set; }
