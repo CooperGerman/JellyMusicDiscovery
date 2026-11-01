@@ -39,6 +39,7 @@ public class ServiceRegistrator : IPluginServiceRegistrator
         services.AddSingleton<PopularityRankIndex>();
         services.AddSingleton<IMediaSourceProvider, DiscoveryMediaSourceProvider>();
         services.AddHostedService<WebClientTransformationRegistration>();
+        services.AddHostedService<PopularityLibraryWatcher>();
 
         services.Configure<MvcOptions>(opts =>
         {

@@ -64,6 +64,7 @@ public class DiscoveryController : ControllerBase
                     return BadRequest(new { Message = "This result has no album metadata to request." });
 
                 var result = await _lidarr.AddAlbumByTextAsync(entry.Artist, entry.AlbumName, ct).ConfigureAwait(false);
+                if (result.Success) _lidarr.InvalidateAlbumStatus(entry.Artist, entry.AlbumName);
                 return result.Success ? Ok(new { result.Message }) : StatusCode(502, new { result.Message });
             }
         }
@@ -72,6 +73,9 @@ public class DiscoveryController : ControllerBase
         var item = _library.GetItemById(id);
         if (item is not null)
         {
+            var albumItem = item as MusicAlbum;
+            var artistName = albumItem?.AlbumArtists?.FirstOrDefault() ?? albumItem?.Artists?.FirstOrDefault() ?? string.Empty;
+            var albumName = item.Name ?? string.Empty;
             var mbid = item.GetProviderId(ProviderIds.MusicBrainzReleaseGroup);
             LidarrClient.RequestResult res;
 
@@ -79,12 +83,10 @@ public class DiscoveryController : ControllerBase
                 res = await _lidarr.AddAlbumByMbidAsync(mbid, ct).ConfigureAwait(false);
             else
             {
-                var ma = item as MusicAlbum;
-                var artist = ma?.AlbumArtists?.FirstOrDefault() ?? ma?.Artists?.FirstOrDefault() ?? string.Empty;
-                var album = item.Name ?? string.Empty;
-                res = await _lidarr.AddAlbumByTextAsync(artist, album, ct).ConfigureAwait(false);
+                res = await _lidarr.AddAlbumByTextAsync(artistName, albumName, ct).ConfigureAwait(false);
             }
 
+            if (res.Success) _lidarr.InvalidateAlbumStatus(artistName, albumName);
             return res.Success ? Ok(new { res.Message }) : StatusCode(502, new { res.Message });
         }
 
@@ -100,7 +102,43 @@ public class DiscoveryController : ControllerBase
             return NotFound("Unknown discovery artist.");
 
         var result = await _lidarr.AddArtistByNameAsync(entry.Artist, ct).ConfigureAwait(false);
+        if (result.Success) _lidarr.InvalidateArtistStatus(entry.Artist);
         return result.Success ? Ok(new { result.Message }) : StatusCode(502, new { result.Message });
+    }
+
+    /// <summary>POST /mdiscover/lidarr/status — batch Lidarr match/monitor state for discovery cards.</summary>
+    [HttpPost("lidarr/status")]
+    public async Task<IActionResult> LidarrStatus([FromBody] Guid[]? itemIds, CancellationToken ct)
+    {
+        if (itemIds is null || itemIds.Length == 0) return Ok(new { items = Array.Empty<object>() });
+        if (itemIds.Length > 50) return BadRequest("At most 50 discovery items may be checked at once.");
+
+        var statuses = await Task.WhenAll(itemIds.Distinct().Select(async id =>
+        {
+            LidarrItemStatus status;
+            if (!_cache.TryGet(id, out var entry) || entry is null)
+            {
+                status = LidarrItemStatus.NoMatch;
+            }
+            else if (entry.Kind == "artist" && !string.IsNullOrWhiteSpace(entry.Artist))
+            {
+                status = await _lidarr.GetArtistStatusAsync(entry.Artist, ct).ConfigureAwait(false);
+            }
+            else if ((entry.Kind == "album" || entry.Kind == "track")
+                && !string.IsNullOrWhiteSpace(entry.Artist)
+                && !string.IsNullOrWhiteSpace(entry.AlbumName))
+            {
+                status = await _lidarr.GetAlbumStatusAsync(entry.Artist, entry.AlbumName, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                status = LidarrItemStatus.NoMatch;
+            }
+
+            return new { id = id.ToString("N"), status };
+        })).ConfigureAwait(false);
+
+        return Ok(new { items = statuses });
     }
 
     /// <summary>GET /mdiscover/album/{itemId}/tracks — lazy-materialize track stubs for a Deezer album stub.</summary>

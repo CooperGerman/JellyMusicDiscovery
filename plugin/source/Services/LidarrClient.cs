@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -18,12 +19,120 @@ public class LidarrClient
 {
     private readonly IHttpClientFactory _httpFactory;
     private readonly ILogger<LidarrClient> _log;
+    private readonly ConcurrentDictionary<string, CachedStatus> _statusCache = new(StringComparer.Ordinal);
+    private static readonly TimeSpan StatusCacheLifetime = TimeSpan.FromMinutes(1);
 
     public LidarrClient(IHttpClientFactory httpFactory, ILogger<LidarrClient> log)
     {
         _httpFactory = httpFactory;
         _log = log;
     }
+
+    public Task<LidarrItemStatus> GetArtistStatusAsync(string artistName, CancellationToken ct) =>
+        GetCachedStatusAsync(ArtistStatusKey(artistName), async http =>
+        {
+            var lookup = await http.GetFromJsonAsync<List<JsonElement>>(
+                $"api/v1/artist/lookup?term={Uri.EscapeDataString(artistName)}", JsonOpts, ct).ConfigureAwait(false);
+            var normalizedName = NormalizeName(artistName);
+            var matches = lookup?.Where(item =>
+                    item.TryGetProperty("artistName", out var name)
+                    && string.Equals(NormalizeName(name.GetString() ?? string.Empty), normalizedName, StringComparison.Ordinal))
+                .ToList() ?? new();
+            if (matches.Count != 1) return LidarrItemStatus.NoMatch;
+
+            var lidarrId = GetPositiveId(matches[0]);
+            var monitored = lidarrId.HasValue
+                && await IsMonitoredAsync(http, $"api/v1/artist/{lidarrId.Value}", ct).ConfigureAwait(false);
+            return new LidarrItemStatus(true, true, true, lidarrId.HasValue, monitored);
+        }, ct);
+
+    public Task<LidarrItemStatus> GetAlbumStatusAsync(string artistName, string albumName, CancellationToken ct) =>
+        GetCachedStatusAsync(AlbumStatusKey(artistName, albumName), async http =>
+        {
+            var queries = new[] { $"{artistName} {albumName}".Trim(), albumName }
+                .Where(term => !string.IsNullOrWhiteSpace(term))
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+            JsonElement? match = null;
+            foreach (var term in queries)
+            {
+                var lookup = await http.GetFromJsonAsync<List<JsonElement>>(
+                    $"api/v1/album/lookup?term={Uri.EscapeDataString(term)}", JsonOpts, ct).ConfigureAwait(false);
+                match = PickBestLookupHit(lookup, matchMbid: null, artistName, albumName);
+                if (match.HasValue) break;
+            }
+            if (!match.HasValue) return LidarrItemStatus.NoMatch;
+
+            var lidarrId = GetPositiveId(match.Value);
+            var monitored = lidarrId.HasValue
+                && await IsMonitoredAsync(http, $"api/v1/album/{lidarrId.Value}", ct).ConfigureAwait(false);
+            return new LidarrItemStatus(true, true, true, lidarrId.HasValue, monitored);
+        }, ct);
+
+    public void InvalidateArtistStatus(string artistName)
+    {
+        _statusCache.TryRemove(ArtistStatusKey(artistName), out _);
+        var albumPrefix = "album:" + NormalizeName(artistName) + ":";
+        foreach (var key in _statusCache.Keys.Where(key => key.StartsWith(albumPrefix, StringComparison.Ordinal)))
+            _statusCache.TryRemove(key, out _);
+    }
+
+    public void InvalidateAlbumStatus(string artistName, string albumName)
+    {
+        _statusCache.TryRemove(AlbumStatusKey(artistName, albumName), out _);
+        _statusCache.TryRemove(ArtistStatusKey(artistName), out _);
+    }
+
+    private static string ArtistStatusKey(string artistName) => "artist:" + NormalizeName(artistName);
+
+    private static string AlbumStatusKey(string artistName, string albumName) =>
+        "album:" + NormalizeName(artistName) + ":" + NormalizeName(albumName);
+
+    private async Task<LidarrItemStatus> GetCachedStatusAsync(
+        string key,
+        Func<HttpClient, Task<LidarrItemStatus>> getStatus,
+        CancellationToken ct)
+    {
+        var cfg = Plugin.Instance?.Configuration;
+        if (cfg is null || string.IsNullOrWhiteSpace(cfg.LidarrBaseUrl) || string.IsNullOrWhiteSpace(cfg.LidarrApiKey))
+            return LidarrItemStatus.NotConfigured;
+
+        if (_statusCache.TryGetValue(key, out var cached) && cached.ExpiresUtc > DateTime.UtcNow)
+            return cached.Status;
+
+        try
+        {
+            using var http = MakeClient();
+            var status = await getStatus(http).ConfigureAwait(false);
+            _statusCache[key] = new CachedStatus(DateTime.UtcNow + StatusCacheLifetime, status);
+            return status;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Could not query Lidarr match status for {Key}.", key);
+            var status = LidarrItemStatus.Unavailable;
+            _statusCache[key] = new CachedStatus(DateTime.UtcNow + TimeSpan.FromSeconds(10), status);
+            return status;
+        }
+    }
+
+    private void InvalidateStatus(string key) => _statusCache.TryRemove(key, out _);
+
+    private static int? GetPositiveId(JsonElement item) =>
+        item.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.Number && id.GetInt32() > 0
+            ? id.GetInt32()
+            : null;
+
+    private static async Task<bool> IsMonitoredAsync(HttpClient http, string path, CancellationToken ct)
+    {
+        var item = await http.GetFromJsonAsync<JsonElement>(path, JsonOpts, ct).ConfigureAwait(false);
+        return item.TryGetProperty("monitored", out var monitored) && monitored.ValueKind == JsonValueKind.True;
+    }
+
+    private readonly record struct CachedStatus(DateTime ExpiresUtc, LidarrItemStatus Status);
 
     public async Task<RequestResult> AddArtistByNameAsync(string artistName, CancellationToken ct)
     {
@@ -671,4 +780,11 @@ public class LidarrClient
         public static RequestResult Ok(string msg) => new() { Success = true, Message = msg };
         public static RequestResult Fail(string msg) => new() { Success = false, Message = msg };
     }
+}
+
+public sealed record LidarrItemStatus(bool Configured, bool Available, bool Matched, bool InLidarr, bool Monitored)
+{
+    public static LidarrItemStatus NotConfigured { get; } = new(false, true, false, false, false);
+    public static LidarrItemStatus Unavailable { get; } = new(true, false, false, false, false);
+    public static LidarrItemStatus NoMatch { get; } = new(true, true, false, false, false);
 }

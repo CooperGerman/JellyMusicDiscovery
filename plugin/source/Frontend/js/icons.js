@@ -30,6 +30,22 @@
     style.id = STYLE_ID;
     style.textContent = `
       .mdiscover-request-host { position: relative !important; }
+      .mdiscover-lidarr-status {
+        position: absolute; z-index: 25; top: 6px; left: 6px;
+        display: inline-flex; align-items: center; gap: 5px; max-width: calc(100% - 12px);
+        padding: 4px 7px; border-radius: 4px; color: #fff;
+        background: rgba(18, 18, 24, 0.88); font-size: 11px; font-weight: 650;
+        line-height: 1.2; pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+      }
+      .mdiscover-lidarr-status-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .mdiscover-lidarr-status-icon { width: 14px; height: 14px; flex: 0 0 14px; }
+      .mdiscover-lidarr-status[data-state="requested"] { background: rgba(20, 105, 58, 0.94); }
+      .mdiscover-lidarr-status[data-state="matched"],
+      .mdiscover-lidarr-status[data-state="unmonitored"] { background: rgba(120, 78, 16, 0.94); }
+      .mdiscover-lidarr-status[data-state="no-match"],
+      .mdiscover-lidarr-status[data-state="unconfigured"] { background: rgba(150, 35, 40, 0.94); }
+      .mdiscover-lidarr-status[data-state="unavailable"],
+      .mdiscover-lidarr-status[data-state="unknown"] { background: rgba(76, 76, 86, 0.94); }
       .mdiscover-requestable-card .cardOverlayContainer [data-action="resume"] {
         display: none !important;
       }
@@ -56,6 +72,10 @@
         opacity: 1;
       }
       .${BUTTON_CLASS}:disabled { cursor: default; background: #25834c; }
+      .${BUTTON_CLASS}[data-lidarr-state="no-match"],
+      .${BUTTON_CLASS}[data-lidarr-state="unconfigured"] { background: #8d292e; }
+      .${BUTTON_CLASS}[data-lidarr-state="unavailable"],
+      .${BUTTON_CLASS}[data-lidarr-state="unknown"] { background: #555560; }
       .${BUTTON_CLASS}-icon { width: 16px; height: 16px; flex-shrink: 0; fill: currentColor; }
     `;
     document.head.appendChild(style);
@@ -74,7 +94,32 @@
     return 'Item';
   }
 
-  function decorate(card, item) {
+  function getLidarrStatusPresentation(status) {
+    if (!status) return { state: 'unknown', label: 'Lidarr status unavailable', symbol: '?' };
+    if (!status.configured) return { state: 'unconfigured', label: 'Lidarr not configured', symbol: '×' };
+    if (!status.available) return { state: 'unavailable', label: 'Lidarr unavailable', symbol: '?' };
+    if (!status.matched) return { state: 'no-match', label: 'No Lidarr match', symbol: '×' };
+    if (status.monitored) return { state: 'requested', label: 'Requested · monitored', symbol: '✓' };
+    if (status.inLidarr) return { state: 'unmonitored', label: 'In Lidarr · not monitored', symbol: '!' };
+    return { state: 'matched', label: 'Lidarr match · not requested', symbol: '✓' };
+  }
+
+  function renderLidarrStatus(element, status) {
+    const presentation = getLidarrStatusPresentation(status);
+    element.dataset.state = presentation.state;
+    element.title = presentation.label;
+    element.setAttribute('aria-label', presentation.label);
+    const icon = document.createElement('span');
+    icon.className = 'mdiscover-lidarr-status-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = presentation.symbol;
+    const label = document.createElement('span');
+    label.className = 'mdiscover-lidarr-status-label';
+    label.textContent = presentation.label;
+    element.replaceChildren(icon, label);
+  }
+
+  function decorate(card, item, lidarrStatus) {
     if (card.dataset.mdiscoverDecorated === '1') return;
     const kind = requestKind(item.type);
     if (!kind) return;
@@ -89,10 +134,21 @@
     host.style.position = 'relative';
     host.classList.add('mdiscover-request-host');
 
+    const statusBadge = document.createElement('span');
+    statusBadge.className = 'mdiscover-lidarr-status';
+    renderLidarrStatus(statusBadge, lidarrStatus);
+    host.appendChild(statusBadge);
+
     const button = document.createElement('button');
     button.type = 'button';
     button.className = BUTTON_CLASS;
-    const label = 'Request';
+    const definiteNoMatch = lidarrStatus?.configured && lidarrStatus?.available && !lidarrStatus?.matched;
+    const unavailableConfiguration = lidarrStatus && !lidarrStatus.configured;
+    button.disabled = Boolean(lidarrStatus?.monitored || definiteNoMatch || unavailableConfiguration);
+    button.dataset.lidarrState = getLidarrStatusPresentation(lidarrStatus).state;
+    const label = lidarrStatus?.monitored ? 'Requested'
+      : definiteNoMatch || unavailableConfiguration ? 'Unavailable'
+        : 'Request';
     const action = document.createElement('div');
     action.className = 'mdiscover-request-action';
     const typeLabel = document.createElement('span');
@@ -110,7 +166,24 @@
       try {
         const api = getApi();
         const body = await api.ajax({ type: 'POST', url: pluginRequestUrl(kind, item.id), dataType: 'json' });
-        button.innerHTML = '<span>Requested</span>';
+        const statusResponse = await api.ajax({
+          type: 'POST',
+          url: api.getUrl('mdiscover/lidarr/status'),
+          data: JSON.stringify([item.id]),
+          contentType: 'application/json',
+          dataType: 'json',
+        }).catch(() => null);
+        const updatedStatus = (statusResponse?.items ?? statusResponse?.Items ?? [])[0]?.status
+          ?? (statusResponse?.items ?? statusResponse?.Items ?? [])[0]?.Status;
+        if (updatedStatus) {
+          renderLidarrStatus(statusBadge, updatedStatus);
+          button.disabled = Boolean(updatedStatus.monitored);
+          button.dataset.lidarrState = getLidarrStatusPresentation(updatedStatus).state;
+          button.innerHTML = updatedStatus.monitored ? '<span>Requested</span>' : iconSvg + '<span>Request</span>';
+        } else {
+          button.innerHTML = '<span>Requested</span>';
+          button.disabled = true;
+        }
         toast(body?.message ?? body?.Message ?? 'Request sent to Lidarr.');
       } catch (errOrResponse) {
         button.disabled = false;
@@ -180,6 +253,34 @@
       if (row.hidden !== shouldHide) row.hidden = shouldHide;
       if (shouldHide) row.dataset.mdiscoverHiddenRow = '1';
     });
+  }
+
+  function normalizeItemId(id) {
+    return String(id ?? '').replaceAll('-', '').toLowerCase();
+  }
+
+  async function fetchLidarrStatuses(api, items) {
+    const statuses = new Map();
+    for (let start = 0; start < items.length; start += 20) {
+      const batch = items.slice(start, start + 20);
+      try {
+        const response = await api.ajax({
+          type: 'POST',
+          url: api.getUrl('mdiscover/lidarr/status'),
+          data: JSON.stringify(batch.map(entry => entry.item.id)),
+          contentType: 'application/json',
+          dataType: 'json',
+        });
+        (response?.items ?? response?.Items ?? []).forEach(entry => {
+          const id = entry?.id ?? entry?.Id;
+          const status = entry?.status ?? entry?.Status;
+          if (id && status) statuses.set(normalizeItemId(id), status);
+        });
+      } catch (_) {
+        // Request actions remain available when Lidarr status is unavailable.
+      }
+    }
+    return statuses;
   }
 
   function groupSearchResults() {
@@ -258,14 +359,13 @@
     const idsToFetch = [];
     const pending = [];
     cards.forEach(c => {
-      if (c.dataset.mdiscoverScanned === '1') return;
       const id = c.dataset.id;
       if (!id) return;
-      c.dataset.mdiscoverScanned = '1';
       if (c.dataset.mdiscoverScannedId !== id) {
         delete c.dataset.mdiscoverScanned;
         delete c.dataset.mdiscoverDecorated;
         c.querySelectorAll('.mdiscover-request-action').forEach(action => action.remove());
+        c.querySelectorAll('.mdiscover-lidarr-status').forEach(status => status.remove());
         c.classList.remove('mdiscover-requestable-card');
         delete c.dataset.mdiscoverResult;
         c.dataset.mdiscoverScannedId = id;
@@ -280,12 +380,15 @@
       return;
     }
 
+    let itemLookupSucceeded = false;
     try {
       const r = await api.getItems(api.getCurrentUserId(), {
         Ids: idsToFetch.join(','),
         Fields: 'Tags,ProviderIds',
       });
+      itemLookupSucceeded = true;
       const byId = new Map((r?.Items ?? []).map(i => [String(i.Id).toLowerCase(), i]));
+      const discoveryItems = [];
       pending.forEach(card => {
         delete card.dataset.mdiscoverChecking;
         const item = byId.get(String(card.dataset.id).toLowerCase());
@@ -295,16 +398,26 @@
         }
         card.dataset.mdiscoverResult = '1';
         card.dataset.mdiscoverType = item.Type ?? item.type ?? '';
-        decorate(card, {
-          id: item.Id,
-          type: item.Type,
-          name: item.Name,
+        discoveryItems.push({
+          card,
+          item: {
+            id: item.Id,
+            type: item.Type,
+            name: item.Name,
+          },
         });
+      });
+      const lidarrStatuses = await fetchLidarrStatuses(api, discoveryItems);
+      discoveryItems.forEach(({ card, item }) => {
+        decorate(card, item, lidarrStatuses.get(normalizeItemId(item.id)) ?? null);
       });
     } catch (e) {
       // Soft-fail; we'll try again on next poll.
     }
-    pending.forEach(card => delete card.dataset.mdiscoverChecking);
+    pending.forEach(card => {
+      delete card.dataset.mdiscoverChecking;
+      if (itemLookupSucceeded) card.dataset.mdiscoverScanned = '1';
+    });
     groupSearchResults();
   }
 
