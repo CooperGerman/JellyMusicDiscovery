@@ -8,6 +8,14 @@
     "overview": "Adds a discovery layer to Jellyfin's music library, with optional Lidarr requests and streaming companions.",
     "versions": [
       {
+        "version": "0.1.18.0",
+        "changelog": "- Read Lidarr status fields from both camelCase and PascalCase API responses.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
+        "checksum": "bbd61ceff04d16a1975252f41f992fd5",
+        "timestamp": "2026-11-01T18:25:03Z"
+      },
+      {
         "version": "0.1.17.0",
         "changelog": "- Show Lidarr match and monitoring state on discovery cards.\n- Automatically index Deezer ranks for new library imports in debounced batches.",
         "targetAbi": "12.1.0.0",

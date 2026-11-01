@@ -94,7 +94,19 @@
     return 'Item';
   }
 
+  function normalizeLidarrStatus(status) {
+    if (!status) return null;
+    return {
+      configured: Boolean(status.configured ?? status.Configured),
+      available: Boolean(status.available ?? status.Available),
+      matched: Boolean(status.matched ?? status.Matched),
+      inLidarr: Boolean(status.inLidarr ?? status.InLidarr),
+      monitored: Boolean(status.monitored ?? status.Monitored),
+    };
+  }
+
   function getLidarrStatusPresentation(status) {
+    status = normalizeLidarrStatus(status);
     if (!status) return { state: 'unknown', label: 'Lidarr status unavailable', symbol: '?' };
     if (!status.configured) return { state: 'unconfigured', label: 'Lidarr not configured', symbol: '×' };
     if (!status.available) return { state: 'unavailable', label: 'Lidarr unavailable', symbol: '?' };
@@ -121,6 +133,7 @@
 
   function decorate(card, item, lidarrStatus) {
     if (card.dataset.mdiscoverDecorated === '1') return;
+    lidarrStatus = normalizeLidarrStatus(lidarrStatus);
     const kind = requestKind(item.type);
     if (!kind) return;
 
@@ -173,8 +186,8 @@
           contentType: 'application/json',
           dataType: 'json',
         }).catch(() => null);
-        const updatedStatus = (statusResponse?.items ?? statusResponse?.Items ?? [])[0]?.status
-          ?? (statusResponse?.items ?? statusResponse?.Items ?? [])[0]?.Status;
+        const statusRow = (statusResponse?.items ?? statusResponse?.Items ?? [])[0];
+        const updatedStatus = normalizeLidarrStatus(statusRow?.status ?? statusRow?.Status);
         if (updatedStatus) {
           renderLidarrStatus(statusBadge, updatedStatus);
           button.disabled = Boolean(updatedStatus.monitored);
@@ -274,7 +287,7 @@
         (response?.items ?? response?.Items ?? []).forEach(entry => {
           const id = entry?.id ?? entry?.Id;
           const status = entry?.status ?? entry?.Status;
-          if (id && status) statuses.set(normalizeItemId(id), status);
+          if (id && status) statuses.set(normalizeItemId(id), normalizeLidarrStatus(status));
         });
       } catch (_) {
         // Request actions remain available when Lidarr status is unavailable.
