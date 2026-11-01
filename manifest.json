@@ -8,6 +8,126 @@
     "overview": "Adds a discovery layer to Jellyfin's music library, with optional Lidarr requests and streaming companions.",
     "versions": [
       {
+        "version": "0.1.33.0",
+        "changelog": "- Apply relevance scores to the frontend's camelCase metadata projection.\n- Rank cached discovery cards across media-type rows without changing local result order.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
+        "checksum": "3b6349889e87febd66aa8d82df6278c7",
+        "timestamp": "2026-11-01T23:43:37Z"
+      },
+      {
+        "version": "0.1.32.0",
+        "changelog": "- Rank completed discovery cards by title relevance across artist, album, and song rows.\n- Leave native Jellyfin card order unchanged.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
+        "checksum": "cff9bc3e7154fb639700bdc44b56bb64",
+        "timestamp": "2026-11-01T23:41:02Z"
+      },
+      {
+        "version": "0.1.31.0",
+        "changelog": "- Rank cached and new discovery items by title/artist relevance and media type.\n- Preserve the original order of all native Jellyfin results.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
+        "checksum": "afc9fdf5b2502ab846b1660f164c5f7b",
+        "timestamp": "2026-11-01T23:37:51Z"
+      },
+      {
+        "version": "0.1.30.0",
+        "changelog": "- Rank appended discovery results by title and artist match strength.\n- Preserve the native Jellyfin result order and existing local deduplication.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
+        "checksum": "02a8f42eb0d0914eeae18256992101c4",
+        "timestamp": "2026-11-01T23:34:39Z"
+      },
+      {
+        "version": "0.1.29.0",
+        "changelog": "- Discard discovery metadata/status results superseded by a newer search.\n- Position result sections only when Jellyfin's native row order changes.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
+        "checksum": "fe965219360bb2966ec5c2d02371d9d2",
+        "timestamp": "2026-11-01T23:25:57Z"
+      },
+      {
+        "version": "0.1.28.0",
+        "changelog": "- Keep native empty headings hidden until local results exist.\n- Hide discovery candidates until fully decorated and stop reordering result sections during polling.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
+        "checksum": "c0f4c9ddd8dadc783d7c7f6179c6920c",
+        "timestamp": "2026-11-01T23:21:53Z"
+      },
+      {
+        "version": "0.1.27.0",
+        "changelog": "- Hide empty native headings immediately and keep them hidden while only discovery candidates are pending.\n- Create the discovery row only after candidate metadata and Lidarr status are complete.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
+        "checksum": "5c469c2a5ece01e893d1e29653f45254",
+        "timestamp": "2026-11-01T23:14:01Z"
+      },
+      {
+        "version": "0.1.26.0",
+        "changelog": "- Hide discovery candidates before first paint until metadata and Lidarr status are resolved.\n- Hide empty native result rows immediately while preserving populated local rows and Seerr.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
+        "checksum": "e89090eed32cd400584f03a954ff038e",
+        "timestamp": "2026-11-01T23:06:59Z"
+      },
+      {
+        "version": "0.1.25.0",
+        "changelog": "- Keep discovery cards hidden until stub metadata and Lidarr status are resolved.\n- Add completed discovery cards to their section only after they are fully decorated.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
+        "checksum": "38586fb487d7b13d9dcf7f9fc0848075",
+        "timestamp": "2026-11-01T23:00:54Z"
+      },
+      {
+        "version": "0.1.24.0",
+        "changelog": "- Keep Jellyfin's native search rows before appended discovery results, regardless of render timing.\n- Keep discovery before YouTube and Seerr.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
+        "checksum": "bab652010b37b11696c2459a501c935a",
+        "timestamp": "2026-11-01T22:49:36Z"
+      },
+      {
+        "version": "0.1.23.0",
+        "changelog": "- Preserve Jellyfin native search results unchanged and append only discovery items not already in the library.\n- Keep discovery results after local results and before YouTube and Seerr.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
+        "checksum": "b19f39b308577567bb36b2544b028d7b",
+        "timestamp": "2026-11-01T22:44:39Z"
+      },
+      {
+        "version": "0.1.22.0",
+        "changelog": "- Show local music artists in their own native-style results row.\n- Keep missing discovery artists, albums, and tracks visible regardless of Lidarr match, while preserving request-status badges.\n- Keep local, discovery, YouTube, and Seerr sections in order.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
+        "checksum": "0042db8fc086032e05a90c119e7c8e9b",
+        "timestamp": "2026-11-01T22:39:18Z"
+      },
+      {
+        "version": "0.1.21.0",
+        "changelog": "- Keep local Jellyfin search results visible, including matching local music artists.\n- Show missing discovery artists, albums, and tracks regardless of Lidarr match; retain request-status badges.\n- Keep results ordered as local, discovery, YouTube, then Seerr.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
+        "checksum": "a43ee1791ea75e33ba8f8bc7ae41e299",
+        "timestamp": "2026-11-01T22:32:54Z"
+      },
+      {
+        "version": "0.1.20.0",
+        "changelog": "- Hide Deezer artist results already present in the Jellyfin library while retaining unmatched albums.\n- Link discovery albums and tracks to local Jellyfin artist pages when available.\n- Preserve native card navigation alongside request controls.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
+        "checksum": "4f3382c9635de0e546e62f0a6b8e86ac",
+        "timestamp": "2026-11-01T22:07:35Z"
+      },
+      {
+        "version": "0.1.19.0",
+        "changelog": "- Hide Deezer artist results already present in the Jellyfin library while keeping missing albums discoverable.\n- Preserve native Jellyfin card navigation alongside Lidarr request actions.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
+        "checksum": "fe44cc7c9edf8cb435eb1a6ea0b2eab4",
+        "timestamp": "2026-11-01T19:11:35Z"
+      },
+      {
         "version": "0.1.18.0",
         "changelog": "- Read Lidarr status fields from both camelCase and PascalCase API responses.",
         "targetAbi": "12.1.0.0",

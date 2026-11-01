@@ -2,6 +2,7 @@
 
 (function () {
   const STUB_TAG = 'mdiscover-stub';
+  const PENDING_CLASS = 'mdiscover-pending';
   const POLL_INTERVAL_MS = 800;
   const BUTTON_CLASS = 'mdiscover-request-button';
   const STYLE_ID = 'mdiscover-request-styles';
@@ -9,9 +10,9 @@
   const SEARCH_SECTION_TITLE = 'Discover on JellyMusicDiscovery';
   const YOUTUBE_SECTION_CLASS = 'mdiscover-youtube-section';
   const YOUTUBE_SECTION_TITLE = 'Play from YouTube';
-  const EMPTY_SEARCH_ROW_GRACE_MS = 4000;
   let lastSearchHash = '';
-  let emptySearchRowSince = new WeakMap();
+  let searchGroupingQueued = false;
+  let searchGeneration = 0;
 
   function getApi() {
     return window.ApiClient ?? null;
@@ -30,6 +31,7 @@
     style.id = STYLE_ID;
     style.textContent = `
       .mdiscover-request-host { position: relative !important; }
+      .${PENDING_CLASS} { visibility: hidden !important; }
       .mdiscover-lidarr-status {
         position: absolute; z-index: 25; top: 6px; left: 6px;
         display: inline-flex; align-items: center; gap: 5px; max-width: calc(100% - 12px);
@@ -56,7 +58,7 @@
       }
       .mdiscover-request-host:hover .mdiscover-request-action,
       .mdiscover-request-host:focus-within .mdiscover-request-action {
-        opacity: 1; pointer-events: auto;
+        opacity: 1;
       }
       .mdiscover-request-type {
         color: #fff; background: rgba(18, 18, 24, 0.82); border-radius: 4px;
@@ -69,7 +71,7 @@
         min-width: 112px; min-height: 36px; border: 0; border-radius: 5px; padding: 7px 12px;
         color: #fff; background: #6941c6; font: inherit; font-weight: 600;
         cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.5);
-        opacity: 1;
+        opacity: 1; pointer-events: auto;
       }
       .${BUTTON_CLASS}:disabled { cursor: default; background: #25834c; }
       .${BUTTON_CLASS}[data-lidarr-state="no-match"],
@@ -251,25 +253,59 @@
   }
 
   function hideEmptySearchRows(rows) {
-    const now = Date.now();
     rows.forEach(row => {
-      const hasCards = row.querySelector('.card[data-id]') !== null;
-      if (hasCards) {
-        emptySearchRowSince.delete(row);
-        if (row.hidden) row.hidden = false;
+      const hasLocalCards = [...row.querySelectorAll('.card[data-id]')]
+        .some(card => card.dataset.mdiscoverResult !== '1' && !card.classList.contains(PENDING_CLASS));
+      row.hidden = !hasLocalCards;
+      if (hasLocalCards) {
         delete row.dataset.mdiscoverHiddenRow;
-        return;
+      } else {
+        row.dataset.mdiscoverHiddenRow = '1';
       }
-
-      if (!emptySearchRowSince.has(row)) emptySearchRowSince.set(row, now);
-      const shouldHide = now - emptySearchRowSince.get(row) >= EMPTY_SEARCH_ROW_GRACE_MS;
-      if (row.hidden !== shouldHide) row.hidden = shouldHide;
-      if (shouldHide) row.dataset.mdiscoverHiddenRow = '1';
     });
   }
 
   function normalizeItemId(id) {
     return String(id ?? '').replaceAll('-', '').toLowerCase();
+  }
+
+  function normalizeSearchValue(value) {
+    let normalized = [...String(value ?? '').toLocaleLowerCase()]
+      .filter(character => /[\p{L}\p{N}]/u.test(character))
+      .join('');
+    if (normalized.startsWith('the') && normalized.length > 3) normalized = normalized.slice(3);
+    return normalized;
+  }
+
+  function searchNameMatchScore(query, candidate) {
+    const queryKey = normalizeSearchValue(query);
+    const candidateKey = normalizeSearchValue(candidate);
+    if (!queryKey || !candidateKey) return 100;
+    if (candidateKey === queryKey) return 0;
+    if (candidateKey.startsWith(queryKey)) return 1;
+    if (candidateKey.includes(queryKey)) return 2;
+    return 100;
+  }
+
+  function discoveryRelevanceScore(query, item) {
+    const type = item.Type ?? item.type;
+    const name = item.Name ?? item.name;
+    const typeOrder = type === 'MusicArtist' ? 0 : type === 'Audio' ? 1 : 2;
+    const titleScore = searchNameMatchScore(query, name);
+    if (titleScore < 100) return titleScore * 100 + typeOrder;
+
+    const artistNames = [
+      item.AlbumArtist ?? item.albumArtist,
+      ...(item.Artists ?? item.artists ?? []),
+      ...(item.ArtistItems ?? item.artistItems ?? []).map(artist => artist?.Name ?? artist?.name),
+      ...(item.AlbumArtists ?? item.albumArtists ?? []).map(artist => artist?.Name ?? artist?.name),
+    ];
+    const artistScore = Math.min(100, ...artistNames.map(name => searchNameMatchScore(query, name)));
+    return artistScore < 100 ? 1_000 + artistScore * 100 + typeOrder : 10_000 + typeOrder;
+  }
+
+  function getSearchQuery() {
+    return new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('query') ?? '';
   }
 
   async function fetchLidarrStatuses(api, items) {
@@ -296,6 +332,94 @@
     return statuses;
   }
 
+  function isNativeSearchSection(section) {
+    return section?.classList.contains('verticalSection')
+      && !section.classList.contains('jellyseerr-section')
+      && !section.classList.contains(SEARCH_SECTION_CLASS)
+      && !section.classList.contains(YOUTUBE_SECTION_CLASS);
+  }
+
+  function queueSearchGrouping() {
+    if (searchGroupingQueued) return;
+    searchGroupingQueued = true;
+    queueMicrotask(() => {
+      searchGroupingQueued = false;
+      groupSearchResults();
+    });
+  }
+
+  function markPendingDiscoveryCard(card) {
+    if (card.dataset.mdiscoverResult === '1') return false;
+    const hasDiscoveryImage = [...card.querySelectorAll('.cardImageContainer')]
+      .some(image => /[?&]tag=deezer-/i.test(image.style.backgroundImage));
+    if (hasDiscoveryImage) {
+      if (card.classList.contains(PENDING_CLASS)) return false;
+      installStyles();
+      card.classList.add(PENDING_CLASS);
+      return true;
+    } else {
+      if (!card.classList.contains(PENDING_CLASS)) return false;
+      card.classList.remove(PENDING_CLASS);
+      return true;
+    }
+  }
+
+  function markPendingDiscoveryCards(node) {
+    if (node.nodeType !== Node.ELEMENT_NODE) return false;
+    let changed = false;
+    if (node.matches('.card[data-id]')) changed = markPendingDiscoveryCard(node) || changed;
+    node.querySelectorAll('.card[data-id]').forEach(card => {
+      changed = markPendingDiscoveryCard(card) || changed;
+    });
+    return changed;
+  }
+
+  function containsNativeSearchSection(node) {
+    if (node.matches?.('.verticalSection') && isNativeSearchSection(node)) return true;
+    return [...(node.querySelectorAll?.('.verticalSection') ?? [])].some(isNativeSearchSection);
+  }
+
+  const pendingDiscoveryObserver = new MutationObserver(records => {
+    let shouldRegroup = false;
+    records.forEach(record => {
+      if (record.type === 'attributes') {
+        if (record.target.matches('.cardImageContainer')) {
+          const card = record.target.closest('.card[data-id]');
+          if (card) {
+            shouldRegroup = markPendingDiscoveryCard(card) || shouldRegroup;
+            const row = card.closest('.verticalSection');
+            if (isNativeSearchSection(row) && row.hidden && !card.classList.contains(PENDING_CLASS))
+              shouldRegroup = true;
+          }
+        }
+        return;
+      }
+      if (record.removedNodes.length) {
+        const row = record.target.closest?.('.verticalSection');
+        if (isNativeSearchSection(row)) shouldRegroup = true;
+      }
+      record.addedNodes.forEach(node => {
+        shouldRegroup = markPendingDiscoveryCards(node) || shouldRegroup;
+        shouldRegroup = containsNativeSearchSection(node) || shouldRegroup;
+        const cards = node.nodeType === Node.ELEMENT_NODE
+          ? (node.matches('.card[data-id]') ? [node] : [...node.querySelectorAll('.card[data-id]')])
+          : [];
+        shouldRegroup = cards.some(card => {
+          const row = card.closest('.verticalSection');
+          return isNativeSearchSection(row) && row.hidden && !card.classList.contains(PENDING_CLASS);
+        }) || shouldRegroup;
+      });
+    });
+    if (shouldRegroup) queueSearchGrouping();
+  });
+  pendingDiscoveryObserver.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['style'],
+  });
+  if (markPendingDiscoveryCards(document.documentElement)) queueSearchGrouping();
+
   function groupSearchResults() {
     const route = window.location.hash.split('?')[0];
     if (route !== '#/search') return;
@@ -306,17 +430,15 @@
     if (lastSearchHash && lastSearchHash !== window.location.hash) {
       searchResults.querySelector('.' + SEARCH_SECTION_CLASS)?.remove();
       searchResults.querySelector('.' + YOUTUBE_SECTION_CLASS)?.remove();
-      emptySearchRowSince = new WeakMap();
-      searchResults.querySelectorAll('[data-mdiscover-hidden-row="1"]').forEach(row => {
-        row.hidden = false;
-        delete row.dataset.mdiscoverHiddenRow;
-      });
     }
     lastSearchHash = window.location.hash;
 
     const rows = [...searchResults.querySelectorAll('.verticalSection:not(.jellyseerr-section):not(.' + SEARCH_SECTION_CLASS + '):not(.' + YOUTUBE_SECTION_CLASS + ')')];
 
-    const discoveryCards = [...searchResults.querySelectorAll('.card[data-mdiscover-result="1"]')];
+    const discoveryCards = [...searchResults.querySelectorAll('.card[data-mdiscover-result="1"]')]
+      .sort((first, second) =>
+        Number(first.dataset.mdiscoverRelevance ?? 100_000)
+        - Number(second.dataset.mdiscoverRelevance ?? 100_000));
     const youtubeCards = discoveryCards.filter(card => card.dataset.mdiscoverType === 'MusicVideo');
     const otherDiscoveryCards = discoveryCards.filter(card => card.dataset.mdiscoverType !== 'MusicVideo');
     hideEmptySearchRows(rows);
@@ -341,40 +463,54 @@
     const discoverySection = updateSection(SEARCH_SECTION_CLASS, SEARCH_SECTION_TITLE, otherDiscoveryCards);
     const youtubeSection = updateSection(YOUTUBE_SECTION_CLASS, YOUTUBE_SECTION_TITLE, youtubeCards);
     const orderedSections = [discoverySection, youtubeSection].filter(Boolean);
-    const children = [...searchResults.children];
-    const anchorIndex = children.findIndex(child => child.matches('.verticalSection.jellyseerr-section'));
-    const insertionIndex = anchorIndex < 0 ? children.length : anchorIndex;
-    const currentSequence = children.slice(Math.max(0, insertionIndex - orderedSections.length), insertionIndex);
-    const isInPosition = currentSequence.length === orderedSections.length
-      && currentSequence.every((section, index) => section === orderedSections[index]);
+    const isSection = child => child.matches('.verticalSection');
+    const currentSections = [...searchResults.children].filter(isSection);
+    const nativeSections = currentSections.filter(section =>
+      !section.classList.contains('jellyseerr-section')
+      && !section.classList.contains(SEARCH_SECTION_CLASS)
+      && !section.classList.contains(YOUTUBE_SECTION_CLASS));
+    const seerrSections = currentSections.filter(section => section.classList.contains('jellyseerr-section'));
+    const desiredSections = [...nativeSections, ...orderedSections, ...seerrSections];
+    const orderIsCorrect = currentSections.length === desiredSections.length
+      && currentSections.every((section, index) => section === desiredSections[index]);
 
-    if (!isInPosition) {
-      for (const section of orderedSections) {
-        const beforeSection = [...searchResults.children]
-          .find(child => child.matches('.verticalSection.jellyseerr-section')) ?? null;
-        if (section.parentElement === searchResults && section.nextElementSibling === beforeSection) continue;
-        searchResults.insertBefore(section, beforeSection);
-      }
+    if (!orderIsCorrect) {
+      desiredSections.forEach((section, index) => {
+        const currentAtIndex = [...searchResults.children].filter(isSection)[index] ?? null;
+        if (currentAtIndex !== section) searchResults.insertBefore(section, currentAtIndex);
+      });
     }
     hideEmptySearchRows(rows);
   }
 
+  window.addEventListener('hashchange', () => {
+    searchGeneration += 1;
+    queueSearchGrouping();
+  });
+  document.addEventListener('input', event => {
+    if (event.target instanceof Element && event.target.matches('#searchPage #searchTextInput'))
+      searchGeneration += 1;
+  });
+  queueSearchGrouping();
+
   async function scan() {
     const api = getApi();
     if (!api) return;
+    const scanGeneration = searchGeneration;
+    const scanHash = window.location.hash;
+    const searchQuery = getSearchQuery();
 
     const cards = document.querySelectorAll('.card[data-id], [data-id].card');
-    if (cards.length === 0) {
-      groupSearchResults();
-      return;
-    }
+    if (cards.length === 0) return;
 
     const idsToFetch = [];
     const pending = [];
+    const readyCards = [];
+    let layoutChanged = false;
     cards.forEach(c => {
       const id = c.dataset.id;
       if (!id) return;
-      if (c.dataset.mdiscoverScannedId !== id) {
+      if (c.dataset.mdiscoverScannedId !== id || c.dataset.mdiscoverScannedQuery !== searchQuery) {
         delete c.dataset.mdiscoverScanned;
         delete c.dataset.mdiscoverDecorated;
         c.querySelectorAll('.mdiscover-request-action').forEach(action => action.remove());
@@ -382,35 +518,43 @@
         c.classList.remove('mdiscover-requestable-card');
         delete c.dataset.mdiscoverResult;
         c.dataset.mdiscoverScannedId = id;
+        c.dataset.mdiscoverScannedQuery = searchQuery;
       }
+      layoutChanged = markPendingDiscoveryCard(c) || layoutChanged;
+      const row = c.closest('.verticalSection');
+      if (isNativeSearchSection(row) && row.hidden
+          && !c.classList.contains(PENDING_CLASS) && c.dataset.mdiscoverResult !== '1')
+        layoutChanged = true;
       if (c.dataset.mdiscoverScanned === '1' || c.dataset.mdiscoverChecking === '1') return;
       c.dataset.mdiscoverChecking = '1';
       idsToFetch.push(id);
       pending.push(c);
     });
-    if (idsToFetch.length === 0) {
-      groupSearchResults();
-      return;
-    }
+    if (layoutChanged) groupSearchResults();
+    if (idsToFetch.length === 0) return;
 
-    let itemLookupSucceeded = false;
     try {
       const r = await api.getItems(api.getCurrentUserId(), {
         Ids: idsToFetch.join(','),
         Fields: 'Tags,ProviderIds',
       });
-      itemLookupSucceeded = true;
+      if (scanGeneration !== searchGeneration || scanHash !== window.location.hash) return;
       const byId = new Map((r?.Items ?? []).map(i => [String(i.Id).toLowerCase(), i]));
       const discoveryItems = [];
+      const retryCards = new Set();
       pending.forEach(card => {
-        delete card.dataset.mdiscoverChecking;
         const item = byId.get(String(card.dataset.id).toLowerCase());
-        if (!item || !(item.Tags ?? []).includes(STUB_TAG)) {
+        if (!item) {
+          retryCards.add(card);
+          return;
+        }
+        if (!(item.Tags ?? []).includes(STUB_TAG)) {
+          card.classList.remove(PENDING_CLASS);
           delete card.dataset.mdiscoverResult;
           return;
         }
-        card.dataset.mdiscoverResult = '1';
-        card.dataset.mdiscoverType = item.Type ?? item.type ?? '';
+        installStyles();
+        card.classList.add(PENDING_CLASS);
         discoveryItems.push({
           card,
           item: {
@@ -421,17 +565,25 @@
         });
       });
       const lidarrStatuses = await fetchLidarrStatuses(api, discoveryItems);
+      if (scanGeneration !== searchGeneration || scanHash !== window.location.hash) return;
       discoveryItems.forEach(({ card, item }) => {
+        card.dataset.mdiscoverResult = '1';
+        card.dataset.mdiscoverType = item.type ?? '';
+        card.dataset.mdiscoverRelevance = String(discoveryRelevanceScore(searchQuery, item));
         decorate(card, item, lidarrStatuses.get(normalizeItemId(item.id)) ?? null);
+        readyCards.push(card);
+      });
+      pending.forEach(card => {
+        if (retryCards.has(card)) return;
+        card.dataset.mdiscoverScanned = '1';
       });
     } catch (e) {
       // Soft-fail; we'll try again on next poll.
+    } finally {
+      pending.forEach(card => delete card.dataset.mdiscoverChecking);
     }
-    pending.forEach(card => {
-      delete card.dataset.mdiscoverChecking;
-      if (itemLookupSucceeded) card.dataset.mdiscoverScanned = '1';
-    });
     groupSearchResults();
+    readyCards.forEach(card => card.classList.remove(PENDING_CLASS));
   }
 
   setInterval(scan, POLL_INTERVAL_MS);
