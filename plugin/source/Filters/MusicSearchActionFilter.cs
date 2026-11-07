@@ -912,6 +912,7 @@ public class MusicSearchActionFilter : IAsyncResultFilter
         // second stub "Blink-182" card. Same for albums/tracks. Also lets the
         // augmented artist-page (real artist) include only the missing albums.
         var existingArtistNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var existingArtistIds = new HashSet<Guid>();
         var existingAlbumKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var existingAlbumStubKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var existingTrackKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -920,7 +921,10 @@ public class MusicSearchActionFilter : IAsyncResultFilter
         foreach (var item in qr.Items)
         {
             if (item.Type == BaseItemKind.MusicArtist && !string.IsNullOrWhiteSpace(item.Name))
+            {
                 existingArtistNames.Add(item.Name.Trim());
+                existingArtistIds.Add(item.Id);
+            }
             else if (item.Type == BaseItemKind.MusicAlbum)
             {
                 var artist = item.AlbumArtist
@@ -943,6 +947,28 @@ public class MusicSearchActionFilter : IAsyncResultFilter
                 {
                     existingTrackKeys.Add(key);
                 }
+            }
+        }
+
+        if (path.StartsWith("/Artists", StringComparison.OrdinalIgnoreCase)
+            && ExtractSearchTerm(httpCtx) is { Length: > 0 } artistSearchTerm)
+        {
+            var localArtists = _libraryManager.GetItemList(new InternalItemsQuery
+            {
+                SearchTerm = artistSearchTerm,
+                IncludeItemTypes = new[] { BaseItemKind.MusicArtist },
+                Recursive = true,
+                Limit = 100,
+            });
+
+            foreach (var localArtist in localArtists.OfType<MusicArtist>())
+            {
+                if (localArtist.IsDiscoveryStub()
+                    || !existingArtistIds.Add(localArtist.Id)
+                    || !existingArtistNames.Add(localArtist.Name))
+                    continue;
+
+                addItems.Add(BuildLocalArtistDto(localArtist));
             }
         }
 
@@ -1538,6 +1564,16 @@ public class MusicSearchActionFilter : IAsyncResultFilter
         ImageTags = StubImageTag(id),
         ImageBlurHashes = EmptyBlurHashes(),
         PrimaryImageAspectRatio = 1.0,
+        IsFolder = true,
+    };
+
+    private static BaseItemDto BuildLocalArtistDto(MusicArtist artist) => new()
+    {
+        Id = artist.Id,
+        ServerId = Plugin.ServerSystemId,
+        Name = artist.Name,
+        Type = BaseItemKind.MusicArtist,
+        MediaType = MediaType.Unknown,
         IsFolder = true,
     };
 
