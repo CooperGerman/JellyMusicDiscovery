@@ -374,6 +374,23 @@
     return changed;
   }
 
+  function loadDiscoveryImages(cards) {
+    cards.forEach(card => {
+      card.querySelectorAll('.cardImageContainer[data-src]').forEach(image => {
+        const source = image.dataset.src;
+        if (!source || image.style.backgroundImage !== 'none') return;
+
+        // Moving cards into the unified row can happen after Jellyfin's
+        // lazy-image observer has scanned them. Load the image explicitly so
+        // client plugins observing the same search DOM do not leave a blank
+        // discovery card.
+        const escapedSource = source.replace(/(["\\])/g, '\\$1');
+        image.style.backgroundImage = `url("${escapedSource}")`;
+        image.classList.remove('lazy-hidden');
+      });
+    });
+  }
+
   function containsNativeSearchSection(node) {
     if (node.matches?.('.verticalSection') && isNativeSearchSection(node)) return true;
     return [...(node.querySelectorAll?.('.verticalSection') ?? [])].some(isNativeSearchSection);
@@ -457,6 +474,7 @@
         card.dataset.index = String(items.querySelectorAll('.card[data-id]').length);
         items.appendChild(card);
       });
+      loadDiscoveryImages(cards);
       return section;
     }
 

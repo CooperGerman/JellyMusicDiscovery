@@ -8,6 +8,14 @@
     "overview": "Adds a discovery layer to Jellyfin's music library, with optional Lidarr requests and streaming companions.",
     "versions": [
       {
+        "version": "0.1.35.0",
+        "changelog": "- Keep discovery matches in one ordered row instead of splitting them by media type.\n- Hydrate moved card images explicitly so Jellyfin Enhanced and other search observers do not leave blank cards.",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/CooperGerman/JellyMusicDiscovery/main/plugin/JellyMusicDiscovery.zip",
+        "checksum": "d8978595e58da101d13ea55c328040c6",
+        "timestamp": "2026-11-07T16:51:43Z"
+      },
+      {
         "version": "0.1.34.0",
         "changelog": "- Add matching local library artists to the native Artists row when Jellyfin's artist search omits them.\n- Keep local artists ahead of non-local discovery results.",
         "targetAbi": "12.1.0.0",
