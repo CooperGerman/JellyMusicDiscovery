@@ -235,6 +235,8 @@
     const section = template.cloneNode(false);
     section.classList.add(sectionClass);
     section.dataset.mdiscoverSearchSection = '1';
+    section.hidden = false;
+    section.removeAttribute('hidden');
 
     const heading = headingTemplate.cloneNode(false);
     heading.textContent = title;
@@ -452,7 +454,25 @@
 
     const rows = [...searchResults.querySelectorAll('.verticalSection:not(.jellyseerr-section):not(.' + SEARCH_SECTION_CLASS + '):not(.' + YOUTUBE_SECTION_CLASS + ')')];
 
-    const discoveryCards = [...searchResults.querySelectorAll('.card[data-mdiscover-result="1"]')]
+    // Jellyfin keeps library artists in a separate native row, while albums
+    // and songs arrive in the broad Items response. Move those artist cards
+    // into the unified discovery row so an exact artist match leads the row
+    // without duplicating it or requiring the server to violate its type
+    // filter.
+    const nativeArtistCards = rows.flatMap(row =>
+      [...row.querySelectorAll('.card[data-id][data-type="MusicArtist"]')]);
+    nativeArtistCards.forEach(card => {
+      const name = card.querySelector('.textActionButton')?.textContent?.trim() ?? '';
+      card.dataset.mdiscoverNativeArtist = '1';
+      card.dataset.mdiscoverResult = '1';
+      card.dataset.mdiscoverType = 'MusicArtist';
+      card.dataset.mdiscoverRelevance = String(searchNameMatchScore(getSearchQuery(), name) * 100);
+    });
+
+    const discoveryCards = [...new Set([
+      ...searchResults.querySelectorAll('.card[data-mdiscover-result="1"]'),
+      ...nativeArtistCards,
+    ])]
       .sort((first, second) =>
         Number(first.dataset.mdiscoverRelevance ?? 100_000)
         - Number(second.dataset.mdiscoverRelevance ?? 100_000));
@@ -528,6 +548,10 @@
     cards.forEach(c => {
       const id = c.dataset.id;
       if (!id) return;
+      if (c.dataset.mdiscoverNativeArtist === '1') {
+        c.classList.remove(PENDING_CLASS);
+        return;
+      }
       if (c.dataset.mdiscoverScannedId !== id || c.dataset.mdiscoverScannedQuery !== searchQuery) {
         delete c.dataset.mdiscoverScanned;
         delete c.dataset.mdiscoverDecorated;
